@@ -9,7 +9,7 @@
   "version": "1.0.0",
   "docker_image": "ghcr.io/guim31/gladys-solaredge:1.0.0",
   "gladys_version": ">=4.62.0",
-  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-solaredge/main/cover.png",
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-solaredge/main/cover.jpg",
   "transports": ["cloud"],
   "config_schema": [
     {

@@ -135,8 +135,13 @@ cover image, docs) and reports every problem at once.
 
 Until the first release the validator reports two expected failures: the
 `docker_image` does not exist yet (the Release workflow builds it) and the
-`cover_image` URL 404s (it points at `main`, which serves `cover.png` once the
+`cover_image` URL 404s (it points at `main`, which serves `cover.jpg` once the
 code lands there).
+
+`cover.jpg` is the catalog cover: the store contract is **exactly 800×534,
+150 KB max**, JPEG or PNG. It is JPEG at quality 95 with 4:4:4 chroma (49 KB) —
+the smooth background gradient costs 175 KB even as a 256-colour PNG, and
+4:2:0 subsampling would smear the edges of the red logo block.
 
 ## License
 
