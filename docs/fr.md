@@ -28,7 +28,11 @@ Toujours créé.
 | Production du mois    | kWh   | Énergie produite depuis le début du mois       |
 | Production de l'année | kWh   | Énergie produite depuis le début de l'année    |
 | Production totale     | kWh   | Compteur depuis la mise en service             |
-| Revenu du jour        | € / $ | Revenu calculé par SolarEdge selon votre tarif |
+| Revenu du jour\*      | € / $ | Revenu calculé par SolarEdge selon votre tarif |
+
+\* Uniquement si vous avez saisi un tarif de rachat dans le portail SolarEdge
+(voir « Le revenu du jour » plus bas). Sans tarif, la mesure n'est pas créée
+du tout.
 
 ### SolarEdge — Consommation
 
@@ -131,6 +135,48 @@ où vous en êtes.
 > le battement interroge réellement SolarEdge ou se contente de la dernière
 > lecture en cache.
 
+## Le revenu du jour
+
+Cette mesure mérite une explication, parce qu'elle est facile à mal
+interpréter.
+
+SolarEdge ne connaît pas votre contrat. Le revenu qu'il affiche est un calcul
+que vous paramétrez vous-même dans le portail de supervision, sous **Admin →
+Revenue** (accessible avec les droits _account manager_ sur le site). Deux
+modèles y sont proposés : un tarif forfaitaire au kWh, ou un tarif variable
+selon l'heure (_time of use_).
+
+**Tant que vous n'avez pas saisi ce tarif, l'API ne renvoie aucun revenu** et
+l'intégration ne crée tout simplement pas la mesure. C'est volontaire : une
+mesure qui ne pourrait jamais recevoir de valeur ressemblerait à un capteur en
+panne, alors qu'il s'agit d'une option non configurée. Si vous saisissez le
+tarif plus tard, relancez une recherche depuis l'onglet **Découverte** : la
+mesure apparaîtra.
+
+### Pourquoi ce chiffre est trompeur en autoconsommation
+
+Le calcul de SolarEdge est : **tarif × énergie produite**. Pas × énergie
+injectée.
+
+Si votre installation est en autoconsommation avec revente de surplus, votre
+production se partage entre deux flux dont la valeur économique est très
+différente :
+
+- l'énergie que vous consommez sur place vous évite d'**acheter** au réseau,
+  au prix de votre contrat de fourniture ;
+- le surplus est **revendu**, au tarif d'obligation d'achat, généralement bien
+  inférieur.
+
+SolarEdge applique un tarif unique à l'ensemble. Résultat : si vous saisissez
+votre tarif de rachat, le revenu affiché sera nettement surestimé ; si vous
+saisissez votre prix d'achat, c'est l'économie qui le sera. Le calcul juste
+serait `(kWh autoconsommés × prix d'achat évité) + (kWh injectés × tarif de
+rachat)`, ce que ce champ ne sait pas exprimer.
+
+Notre recommandation : ne renseignez ce tarif que si vous savez précisément ce
+que vous voulez en faire, et gardez à l'esprit que le chiffre porte sur la
+production totale. Une mesure absente est plus honnête qu'un chiffre faux.
+
 ## Actions disponibles
 
 - **Tester la connexion** — vérifie la clé, résout le site et liste les
@@ -157,6 +203,19 @@ l'identifiant voulu dans le réglage **Identifiant du site**.
 installation n'a pas de compteur de consommation. C'est une option matérielle
 (compteur Modbus) posée par l'installateur ; sans elle, SolarEdge ne connaît
 que la production.
+
+**Une mesure reste vide alors que les autres se remplissent** — c'est que
+SolarEdge ne la remonte pas pour votre site. L'intégration ne publie jamais 0
+à la place d'une valeur absente : un 0 serait indiscernable d'une vraie mesure
+nulle et fausserait vos graphiques et vos scènes. Les cas les plus courants
+sont un compteur Modbus qui ne communique plus (les énergies soutirée et
+injectée du jour restent vides, alors que la puissance réseau peut afficher un
+0 bien réel remonté par l'onduleur), ou un tarif de rachat non configuré.
+
+**Le revenu du jour n'existe pas dans la liste des mesures** — c'est normal
+sans tarif saisi dans le portail SolarEdge : voir « Le revenu du jour »
+ci-dessus. Après avoir saisi le tarif, relancez une recherche depuis l'onglet
+Découverte pour que la mesure apparaisse.
 
 **Les valeurs ne bougent plus dans l'après-midi** — le quota quotidien est
 probablement atteint. Vérifiez avec **Consommation de l'API** et augmentez

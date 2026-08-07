@@ -130,7 +130,13 @@ function wouldBePolled(device) {
   return device.should_poll === true && Boolean(device.poll_frequency);
 }
 
-const ALL_CAPABILITIES = { production: true, consumption: true, grid: true, battery: true };
+const ALL_CAPABILITIES = {
+  production: true,
+  consumption: true,
+  grid: true,
+  battery: true,
+  revenue: true,
+};
 
 function buildPayload(overrides = {}) {
   return buildDiscoveredDevices(createFakeGladys(), {
@@ -170,6 +176,17 @@ test('a production-only installation passes too', () => {
   });
   assert.equal(payload.length, 1);
   assert.deepEqual(validateDiscoveredDevices(payload), []);
+});
+
+test('the barest possible site — no meter, no battery, no tariff — still passes', () => {
+  // What a fresh SolarEdge install with nothing configured looks like.
+  const payload = buildPayload({
+    capabilities: { consumption: false, grid: false, battery: false, revenue: false },
+  });
+  assert.equal(payload.length, 1);
+  assert.equal(payload[0].features.length, 5);
+  assert.deepEqual(validateDiscoveredDevices(payload), []);
+  assert.ok(wouldBePolled(payload[0]));
 });
 
 test('poll_frequency is one of the values the core accepts, in milliseconds', () => {

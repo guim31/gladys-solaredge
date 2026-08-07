@@ -19,7 +19,13 @@ import { SolarEdgeService } from '../src/solaredge/service.js';
 import { createFakeGladys, stateOf } from './helpers/fakeGladys.js';
 import { createFakeClient, SITE_DETAILS } from './helpers/solaredgeFixtures.js';
 
-const FULL_CAPABILITIES = { production: true, consumption: true, grid: true, battery: true };
+const FULL_CAPABILITIES = {
+  production: true,
+  consumption: true,
+  grid: true,
+  battery: true,
+  revenue: true,
+};
 
 function createContext(overrides = {}) {
   return {
@@ -120,6 +126,39 @@ test('the battery telemetry features only exist when the setting is on', () => {
       (f) => f.category === DEVICE_FEATURE_CATEGORIES.DEVICE_TEMPERATURE_SENSOR,
     ),
   );
+});
+
+test('the revenue feature only exists when SolarEdge computes a revenue', () => {
+  const gladys = createFakeGladys();
+  const withTariff = buildDiscoveredDevices(gladys, createContext()).find((d) =>
+    d.name.includes('Production'),
+  );
+  const withoutTariff = buildDiscoveredDevices(
+    gladys,
+    createContext({ capabilities: { revenue: false } }),
+  ).find((d) => d.name.includes('Production'));
+
+  assert.equal(withTariff.features.length, 6);
+  assert.equal(withoutTariff.features.length, 5);
+  assert.equal(
+    withoutTariff.features.some((f) => f.external_id.endsWith(':revenue-today')),
+    false,
+    'a site with no feed-in tariff must not carry a feature that can never hold a value',
+  );
+});
+
+test('no revenue capability means no revenue state is ever published', async () => {
+  const gladys = createFakeGladys();
+  const snapshot = await buildSnapshot();
+  const bp = DEVICE_BLUEPRINTS.find((b) => b.key === 'solaredge-production');
+
+  // The snapshot DOES carry a revenue: the guard must be the capability, not
+  // the value, or we would post a state for an undeclared feature.
+  assert.equal(snapshot.overview.revenueToday, 3.21);
+  await bp.onPoll(gladys, createContext({ capabilities: { revenue: false } }), snapshot);
+
+  assert.equal(stateOf(gladys, 'energy-today'), 21.4, 'the other counters still publish');
+  assert.equal(stateOf(gladys, 'revenue-today'), undefined);
 });
 
 test('findBlueprintByDevice routes an external_id back to its owner', () => {

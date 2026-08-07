@@ -114,7 +114,7 @@ export class SolarEdgeService {
   }
 
   /**
-   * Which devices this installation can feed. Derived from a real snapshot:
+   * What this installation can actually feed. Derived from a real snapshot:
    * `currentPowerFlow` only exposes LOAD/GRID/STORAGE when the matching
    * hardware (consumption meter, battery) is installed, and `energyDetails`
    * confirms the meters for sites whose flow endpoint stays empty.
@@ -126,6 +126,7 @@ export class SolarEdgeService {
     const snapshot = await this.getSnapshot({ force: true });
     const flow = snapshot.flow;
     const energy = snapshot.energy;
+    const overview = snapshot.overview;
 
     this.capabilities = {
       // A SolarEdge site always produces: the production device is the floor.
@@ -137,6 +138,16 @@ export class SolarEdgeService {
         hasMeter(energy, 'purchased') ||
         hasMeter(energy, 'feedIn'),
       battery: Boolean(flow?.battery),
+      // Revenue is not hardware: SolarEdge computes it as "feed-in tariff ×
+      // energy produced", and only when the owner has entered that tariff in
+      // the monitoring portal (Admin > Revenue). Without it the API returns no
+      // revenue at all, and a feature that can never hold a value is worse
+      // than no feature — it reads as a broken sensor forever.
+      //
+      // The lifetime total is the reliable signal: today's revenue is
+      // legitimately 0 (not absent) just after midnight on a site that HAS a
+      // tariff, so testing it alone would flip the capability with the clock.
+      revenue: hasValue(overview?.revenueLifetime) || hasValue(overview?.revenueToday),
     };
     logger.info(`Capabilities detected: ${JSON.stringify(this.capabilities)}`);
     return this.capabilities;
@@ -259,6 +270,11 @@ export class SolarEdgeService {
 /** True when `energyDetails` returned a real reading for that meter. */
 function hasMeter(energy, key) {
   return Boolean(energy) && energy[key] !== null && energy[key] !== undefined;
+}
+
+/** A real number, as opposed to "SolarEdge did not report this". 0 counts. */
+function hasValue(value) {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function logWarn(endpoint, err) {

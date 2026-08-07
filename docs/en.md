@@ -26,7 +26,10 @@ Always created.
 | Production this month | kWh   | Energy produced since the start of the month   |
 | Production this year  | kWh   | Energy produced since the start of the year    |
 | Total production      | kWh   | Lifetime counter since commissioning           |
-| Revenue today         | € / $ | Revenue computed by SolarEdge from your tariff |
+| Revenue today\*       | € / $ | Revenue computed by SolarEdge from your tariff |
+
+\* Only when you have entered a feed-in tariff in the SolarEdge portal (see
+"Revenue today" below). Without a tariff the feature is not created at all.
 
 ### SolarEdge — Consumption
 
@@ -122,6 +125,42 @@ quota is reached around midday and the values freeze until tomorrow. The
 > setting is what decides whether a tick actually reads SolarEdge or reuses the
 > last cached reading.
 
+## Revenue today
+
+This one deserves an explanation, because it is easy to misread.
+
+SolarEdge does not know your contract. The revenue it reports comes from a
+rate you enter yourself in the monitoring portal, under **Admin → Revenue**
+(you need _account manager_ rights on the site). Two models are offered
+there: a flat rate per kWh, or a time-of-use rate.
+
+**Until that tariff is set, the API returns no revenue at all** and the
+integration simply does not create the feature. That is deliberate: a feature
+that could never hold a value looks like a broken sensor, when it is really an
+unconfigured option. If you set the tariff later, run a scan from the
+**Discovery** tab and the feature appears.
+
+### Why the number misleads with self-consumption
+
+SolarEdge computes **tariff × energy produced**. Not × energy exported.
+
+On an installation that self-consumes and sells the surplus, your production
+splits into two flows worth very different amounts:
+
+- the energy you consume on site saves you from **buying** from the grid, at
+  your supply contract price;
+- the surplus is **sold**, at the feed-in tariff, usually much lower.
+
+SolarEdge applies a single rate to the whole thing. Enter your feed-in tariff
+and the reported revenue is badly overstated; enter your purchase price and
+the savings are. The honest calculation would be `(self-consumed kWh × avoided
+purchase price) + (exported kWh × feed-in tariff)`, which this field cannot
+express.
+
+Our advice: only set the tariff if you know exactly what you want out of it,
+and remember the figure covers total production. A missing feature is more
+honest than a wrong number.
+
 ## Available actions
 
 - **Test the connection** — checks the key, resolves the site and lists the
@@ -146,6 +185,18 @@ installation: press **List my sites** and copy the id you want into the
 **The Consumption and Grid devices do not show up** — your installation has no
 consumption meter. This is a hardware option (a Modbus meter) fitted by the
 installer; without it, SolarEdge only knows about production.
+
+**One reading stays empty while the others fill in** — SolarEdge does not
+report that one for your site. The integration never publishes 0 in place of a
+missing value: a 0 would be indistinguishable from a genuine zero and would
+skew your charts and your scenes. The usual causes are a Modbus meter that
+stopped communicating (imported and exported energy stay empty, while grid
+power may show a real 0 reported by the inverter), or a feed-in tariff that
+was never configured.
+
+**Revenue today is not in the list of readings** — expected when no tariff is
+set in the SolarEdge portal: see "Revenue today" above. After entering the
+tariff, run a scan from the Discovery tab for the feature to appear.
 
 **Values stop moving in the afternoon** — the daily quota is probably spent.
 Check with **API usage** and raise the refresh interval. An orange dot then

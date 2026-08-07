@@ -93,6 +93,7 @@ test('capabilities follow what the installation really reports', async () => {
     consumption: true,
     grid: true,
     battery: true,
+    revenue: true,
   });
 
   // Production-only site: no consumption meter, no battery, empty power flow.
@@ -107,6 +108,9 @@ test('capabilities follow what the installation really reports', async () => {
     consumption: false,
     grid: false,
     battery: false,
+    // The overview fixture carries a revenue, so a tariff IS configured even
+    // on this bare site: the capability is about the tariff, not the hardware.
+    revenue: true,
   });
 });
 
