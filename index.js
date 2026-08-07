@@ -14,7 +14,7 @@
 // The SDK reads them automatically: `new GladysIntegration()` is enough.
 // -----------------------------------------------------------------------------
 
-import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
+import { GladysApiError, GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { connectionFingerprint, isConfigured, normalizeConfig } from './src/config.js';
 import { SolarEdgeService } from './src/solaredge/service.js';
 import { ERROR_CODES } from './src/solaredge/client.js';
@@ -40,15 +40,35 @@ let retryDelay = 0;
 // Last transport published, to avoid re-publishing an unchanged badge.
 let lastTransportKey = null;
 
-const RETRY_MIN_DELAY = 30_000;
-const RETRY_MAX_DELAY = 300_000;
+const RETRY_MIN_DELAY = 60_000;
+const RETRY_MAX_DELAY = 1_800_000;
+// A spent quota does not heal in a few minutes: it resets at UTC midnight.
+const RETRY_QUOTA_DELAY = 3_600_000;
+// Requests kept aside for the user's own actions ("Test the connection",
+// "Refresh now") so a retry loop can never leave them with nothing to press.
+const BUDGET_RESERVE = 12;
 
 // --- Discovery: Gladys asks for the list of devices --------------------------
 gladys.onScanRequest(async () => {
-  logger.info('onScanRequest -> re-detecting the installation');
-  // A scan is the user's explicit "try again": re-probe rather than trusting
-  // the capabilities cached at startup (a battery may have been added since).
-  await bootstrap({ force: true });
+  logger.info('onScanRequest -> the Discovery screen asked for the device list');
+  try {
+    if (context) {
+      // Answer from what we already know FIRST: re-publishing is instant and
+      // costs zero SolarEdge request, so the Discovery screen fills up even
+      // when the re-probe below is slow or fails outright.
+      const devices = buildDiscoveredDevices(gladys, context);
+      await gladys.publishDiscoveredDevices(devices);
+      logger.info(`Scan answered immediately with ${devices.length} known device(s)`);
+    }
+    // Then re-probe: a battery or a consumption meter may have been added to
+    // the installation since the last detection.
+    await bootstrap({ force: true });
+  } catch (err) {
+    // The SDK only `debug`-logs a scan handler that throws (it sends no ack
+    // for SCAN_REQUEST), so an error here is invisible at the default log
+    // level. Log it ourselves, or the user gets a silent failure.
+    logger.error(`Scan failed: ${err.message}`, err);
+  }
 });
 
 // --- Polling: Gladys asks to refresh a device --------------------------------
@@ -141,10 +161,26 @@ async function bootstrap({ force = false } = {}) {
     return;
   }
 
+  if (!service) {
+    service = new SolarEdgeService(config);
+  }
+
+  // Detecting the installation costs 3 to 4 SolarEdge requests. Retrying that
+  // blindly is how a transient failure turns into a permanent one: the retry
+  // loop eats the 300/day budget, and then EVERY call fails with a spent quota
+  // — including the buttons the user would press to diagnose it.
+  const usage = service.usage;
+  if (usage.remaining <= BUDGET_RESERVE) {
+    logger.warn(`Skipping detection: only ${usage.remaining} SolarEdge request(s) left today`);
+    await setStatus(false, {
+      en: `SolarEdge daily quota nearly spent (${usage.count}/${usage.limit}). Detection resumes tomorrow, or raise the refresh interval.`,
+      fr: `Quota SolarEdge presque épuisé (${usage.count}/${usage.limit}). La détection reprendra demain ; augmentez l'intervalle de rafraîchissement.`,
+    });
+    scheduleBootstrapRetry({ code: ERROR_CODES.QUOTA_EXCEEDED });
+    return;
+  }
+
   try {
-    if (!service) {
-      service = new SolarEdgeService(config);
-    }
     const capabilities = await service.getCapabilities({ force });
     const siteId = await service.resolveSiteId();
     const site = await service.getSite();
@@ -153,16 +189,27 @@ async function bootstrap({ force = false } = {}) {
 
     const devices = buildDiscoveredDevices(gladys, context);
     await gladys.publishDiscoveredDevices(devices);
-    logger.info(`${devices.length} device(s) published for site ${siteId}`);
+    // Name every device: when the Discovery screen looks empty, these lines are
+    // what tell you whether the integration published nothing or Gladys
+    // refused what it published.
+    logger.info(
+      `Published ${devices.length} device(s) for site ${siteId}: ${devices.map((d) => d.name).join(', ')}`,
+    );
 
     lastTransportKey = null;
     await reportHealth(null);
     await setStatus(true);
     retryDelay = 0;
   } catch (err) {
-    logger.error(`Initialization failed: ${err.message}`);
+    // `err.code` is the SolarEdge failure class, `err.status` the HTTP status:
+    // both matter to tell "bad key" from "quota spent" from "Gladys refused
+    // the payload" when reading the logs.
+    logger.error(
+      `Initialization failed [${err.code ?? 'no-code'}${err.status ? ` HTTP ${err.status}` : ''}]: ${err.message}`,
+      err,
+    );
     await setStatus(false, describeError(err));
-    scheduleBootstrapRetry();
+    scheduleBootstrapRetry(err);
   }
 }
 
@@ -219,8 +266,18 @@ async function setStatus(connected, message) {
   }
 }
 
-/** Turn a SolarEdge failure into something the user can act on. */
+/** Turn a failure into something the user can act on. */
 function describeError(err) {
+  // A GladysApiError means the HOST refused us — a rejected discovery payload,
+  // an expired integration token — not SolarEdge. Blaming SolarEdge here would
+  // send the user hunting through the monitoring portal for nothing.
+  if (err instanceof GladysApiError) {
+    return {
+      en: `Gladys refused the request (${err.code} / HTTP ${err.status}): ${err.message}`,
+      fr: `Gladys a refusé la requête (${err.code} / HTTP ${err.status}) : ${err.message}`,
+    };
+  }
+
   switch (err?.code) {
     case ERROR_CODES.UNAUTHORIZED:
       return {
@@ -246,13 +303,27 @@ function describeError(err) {
   }
 }
 
-/** Retry the bootstrap with an exponential backoff, capped at 5 minutes. */
-function scheduleBootstrapRetry() {
-  retryDelay = retryDelay === 0 ? RETRY_MIN_DELAY : Math.min(retryDelay * 2, RETRY_MAX_DELAY);
-  logger.info(`Next initialization attempt in ${Math.round(retryDelay / 1000)}s`);
+/**
+ * Retry the bootstrap with an exponential backoff, capped at 30 minutes — and
+ * at a full hour when the quota is what failed, since it only resets at UTC
+ * midnight and every attempt still spends requests we will need tomorrow.
+ *
+ * The retry does NOT force a re-probe: forcing would discard capabilities that
+ * a concurrent attempt may have just resolved, for no gain.
+ */
+function scheduleBootstrapRetry(err) {
+  const quotaSpent =
+    err?.code === ERROR_CODES.QUOTA_EXCEEDED || err?.code === ERROR_CODES.RATE_LIMITED;
+  retryDelay = quotaSpent
+    ? RETRY_QUOTA_DELAY
+    : retryDelay === 0
+      ? RETRY_MIN_DELAY
+      : Math.min(retryDelay * 2, RETRY_MAX_DELAY);
+
+  logger.info(`Next initialization attempt in ${Math.round(retryDelay / 60_000)} min`);
   retryTimer = setTimeout(() => {
     retryTimer = null;
-    bootstrap({ force: true }).catch((err) => logger.error('Retry failed', err));
+    bootstrap().catch((retryErr) => logger.error('Retry failed', retryErr));
   }, retryDelay);
   // Do not hold the event loop open just for a retry timer.
   retryTimer.unref?.();

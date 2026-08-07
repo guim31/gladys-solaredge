@@ -6,8 +6,8 @@
     "en": "Solar production, home consumption, grid exchanges and battery storage from SolarEdge.",
     "fr": "Production solaire, consommation, échanges réseau et batterie depuis SolarEdge."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/guim31/gladys-solaredge:1.0.0",
+  "version": "1.0.1",
+  "docker_image": "ghcr.io/guim31/gladys-solaredge:1.0.1",
   "gladys_version": ">=4.62.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-solaredge/main/cover.jpg",
   "transports": ["cloud"],
@@ -15,7 +15,10 @@
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Getting started",
+        "fr": "Pour commencer"
+      },
       "description": {
         "en": "This integration reads your installation through the SolarEdge Monitoring API. Generate an API key from the monitoring portal (Admin > Site Access > API Access), paste it below, then press \"Test the connection\". SolarEdge allows 300 requests per day and per site: the default refresh interval stays well within that budget.",
         "fr": "Cette intégration lit votre installation via l'API SolarEdge Monitoring. Générez une clé d'API depuis le portail de supervision (Admin > Accès au site > Accès API), collez-la ci-dessous puis appuyez sur « Tester la connexion ». SolarEdge autorise 300 requêtes par jour et par site : l'intervalle de rafraîchissement par défaut reste largement dans ce budget."
@@ -23,14 +26,20 @@
       "links": [
         {
           "url": "https://monitoring.solaredge.com/",
-          "label": { "en": "SolarEdge monitoring portal", "fr": "Portail SolarEdge Monitoring" }
+          "label": {
+            "en": "SolarEdge monitoring portal",
+            "fr": "Portail SolarEdge Monitoring"
+          }
         }
       ]
     },
     {
       "key": "api_key",
       "type": "secret",
-      "label": { "en": "API key", "fr": "Clé d'API" },
+      "label": {
+        "en": "API key",
+        "fr": "Clé d'API"
+      },
       "description": {
         "en": "SolarEdge Monitoring API key, generated in Admin > Site Access > API Access.",
         "fr": "Clé d'API SolarEdge Monitoring, générée dans Admin > Accès au site > Accès API."
@@ -44,14 +53,20 @@
     {
       "key": "site_id",
       "type": "string",
-      "label": { "en": "Site ID", "fr": "Identifiant du site" },
+      "label": {
+        "en": "Site ID",
+        "fr": "Identifiant du site"
+      },
       "description": {
         "en": "Numeric site id. Leave empty when the API key covers a single site: it is detected automatically. Use the \"List my sites\" button otherwise.",
         "fr": "Identifiant numérique du site. Laissez vide si la clé ne couvre qu'un seul site : il est détecté automatiquement. Utilisez sinon le bouton « Lister mes sites »."
       },
       "required": false,
       "default": "",
-      "placeholder": { "en": "1234567", "fr": "1234567" }
+      "placeholder": {
+        "en": "1234567",
+        "fr": "1234567"
+      }
     },
     {
       "key": "poll_frequency",
@@ -118,7 +133,10 @@
     {
       "key": "currency",
       "type": "select",
-      "label": { "en": "Revenue currency", "fr": "Devise des revenus" },
+      "label": {
+        "en": "Revenue currency",
+        "fr": "Devise des revenus"
+      },
       "description": {
         "en": "Currency of the daily revenue reported by SolarEdge, as configured on your site.",
         "fr": "Devise du revenu quotidien remonté par SolarEdge, telle que configurée sur votre site."
@@ -126,11 +144,26 @@
       "required": false,
       "default": "euro",
       "options": [
-        { "value": "euro", "label": { "en": "Euro", "fr": "Euro" } },
-        { "value": "dollar", "label": { "en": "Dollar", "fr": "Dollar" } },
+        {
+          "value": "euro",
+          "label": {
+            "en": "Euro",
+            "fr": "Euro"
+          }
+        },
+        {
+          "value": "dollar",
+          "label": {
+            "en": "Dollar",
+            "fr": "Dollar"
+          }
+        },
         {
           "value": "pound-sterling",
-          "label": { "en": "Pound sterling", "fr": "Livre sterling" }
+          "label": {
+            "en": "Pound sterling",
+            "fr": "Livre sterling"
+          }
         }
       ]
     }
@@ -138,7 +171,10 @@
   "actions": [
     {
       "key": "test_connection",
-      "label": { "en": "Test the connection", "fr": "Tester la connexion" },
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion"
+      },
       "description": {
         "en": "Check the API key, resolve the site and list what this installation can report.",
         "fr": "Vérifie la clé d'API, résout le site et liste ce que l'installation sait remonter."
@@ -147,7 +183,10 @@
     },
     {
       "key": "list_sites",
-      "label": { "en": "List my sites", "fr": "Lister mes sites" },
+      "label": {
+        "en": "List my sites",
+        "fr": "Lister mes sites"
+      },
       "description": {
         "en": "Show every site the API key gives access to, with its id.",
         "fr": "Affiche tous les sites auxquels la clé d'API donne accès, avec leur identifiant."
@@ -156,7 +195,10 @@
     },
     {
       "key": "refresh_now",
-      "label": { "en": "Refresh now", "fr": "Rafraîchir maintenant" },
+      "label": {
+        "en": "Refresh now",
+        "fr": "Rafraîchir maintenant"
+      },
       "description": {
         "en": "Read SolarEdge immediately, without waiting for the next polling cycle.",
         "fr": "Interroge SolarEdge immédiatement, sans attendre le prochain cycle."
@@ -165,7 +207,10 @@
     },
     {
       "key": "api_usage",
-      "label": { "en": "API usage", "fr": "Consommation de l'API" },
+      "label": {
+        "en": "API usage",
+        "fr": "Consommation de l'API"
+      },
       "description": {
         "en": "How many SolarEdge requests were used today, and how many refreshes are left.",
         "fr": "Nombre de requêtes SolarEdge utilisées aujourd'hui, et rafraîchissements restants."
