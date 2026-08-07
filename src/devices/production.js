@@ -16,7 +16,7 @@ import {
   DEVICE_FEATURE_UNITS,
 } from '@gladysassistant/integration-sdk';
 import { CURRENCY_UNITS } from '../config.js';
-import { publishStates } from './helpers.js';
+import { GLADYS_POLL_FREQUENCY, publishStates } from './helpers.js';
 
 const DEVICE_TYPE = 'solaredge-production';
 
@@ -52,7 +52,7 @@ export const production = {
     return {
       name: 'SolarEdge — Production solaire',
       external_id: ids.device,
-      poll_frequency: config.poll_frequency,
+      poll_frequency: GLADYS_POLL_FREQUENCY,
       features: [
         {
           name: 'Puissance produite',

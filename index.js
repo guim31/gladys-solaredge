@@ -39,6 +39,9 @@ let retryTimer = null;
 let retryDelay = 0;
 // Last transport published, to avoid re-publishing an unchanged badge.
 let lastTransportKey = null;
+// Per-device timestamp of the last snapshot actually published, so a Gladys
+// tick that brings no new SolarEdge reading publishes nothing.
+const lastPublishedSnapshot = new Map();
 
 const RETRY_MIN_DELAY = 60_000;
 const RETRY_MAX_DELAY = 1_800_000;
@@ -87,7 +90,18 @@ gladys.onPoll(async (device) => {
 
   try {
     const snapshot = await service.getSnapshot();
+
+    // Gladys ticks every minute (the slowest cadence its poll_frequency enum
+    // allows), but SolarEdge is only read every "Refresh interval" seconds.
+    // Most ticks therefore hand back the very same snapshot: re-publishing it
+    // would write 1440 identical points per feature per day into the history
+    // for nothing — and the host API rate-limits states at 300/minute.
+    if (lastPublishedSnapshot.get(device.external_id) === snapshot.fetchedAt) {
+      logger.debug(`Tick ignored for ${device.external_id}: snapshot unchanged`);
+      return;
+    }
     await blueprint.onPoll(gladys, context, snapshot);
+    lastPublishedSnapshot.set(device.external_id, snapshot.fetchedAt);
     await reportHealth(null);
   } catch (err) {
     await reportHealth(err);
@@ -229,6 +243,9 @@ async function refreshAll() {
   let published = 0;
   for (const blueprint of availableBlueprints(context.capabilities)) {
     const states = await blueprint.onPoll(gladys, context, snapshot);
+    // Mark it published, so the next Gladys tick does not immediately repeat
+    // what this forced refresh just wrote.
+    lastPublishedSnapshot.set(blueprint.deviceExternalId(gladys, context), snapshot.fetchedAt);
     published += states?.length ?? 0;
   }
   await reportHealth(null);

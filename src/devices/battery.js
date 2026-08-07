@@ -20,7 +20,7 @@ import {
   DEVICE_FEATURE_UNITS,
 } from '@gladysassistant/integration-sdk';
 import { BATTERY_STATES } from '../solaredge/snapshot.js';
-import { publishStates } from './helpers.js';
+import { GLADYS_POLL_FREQUENCY, publishStates } from './helpers.js';
 
 const DEVICE_TYPE = 'solaredge-battery';
 
@@ -136,7 +136,7 @@ export const battery = {
     return {
       name: 'SolarEdge — Batterie',
       external_id: ids.device,
-      poll_frequency: config.poll_frequency,
+      poll_frequency: GLADYS_POLL_FREQUENCY,
       features,
     };
   },

@@ -116,6 +116,12 @@ Lowering the interval to 5 minutes costs roughly 620 requests per day: the
 quota is reached around midday and the values freeze until tomorrow. The
 **API usage** button tells you where you stand at any moment.
 
+> **Why do the devices say "every minute"?** Gladys can only wake an
+> integration at a fixed set of cadences, the slowest of which is one minute.
+> That wake-up is just a tick: it costs no request. Your **Refresh interval**
+> setting is what decides whether a tick actually reads SolarEdge or reuses the
+> last cached reading.
+
 ## Available actions
 
 - **Test the connection** — checks the key, resolves the site and lists the

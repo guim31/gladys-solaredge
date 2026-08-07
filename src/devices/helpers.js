@@ -3,6 +3,23 @@
 // -----------------------------------------------------------------------------
 
 /**
+ * How often Gladys wakes us up for a device, in MILLISECONDS.
+ *
+ * `poll_frequency` is not a free number: the core validates it against the
+ * closed DEVICE_POLL_FREQUENCIES enum (1 s, 2 s, 10 s, 15 s, 30 s, 60 s) and
+ * rejects the whole discovery payload otherwise — with, from experience,
+ * `devices[0].poll_frequency: invalid poll frequency`. 60 s is the slowest
+ * value it accepts.
+ *
+ * That is NOT the SolarEdge refresh rate. One minute against a budget of 300
+ * requests/day would be 1440 calls. Gladys's poll is only a TICK: the shared
+ * snapshot (src/solaredge/service.js) decides whether the tick actually costs
+ * a SolarEdge request, and the user's "Refresh interval" setting — in seconds
+ * — is what drives that. The tick is free; the refresh is not.
+ */
+export const GLADYS_POLL_FREQUENCY = 60_000;
+
+/**
  * Build a `publishStates` batch, dropping the features with no value.
  *
  * A missing reading is NOT a zero: a site without a consumption meter, an

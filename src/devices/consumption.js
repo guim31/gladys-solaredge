@@ -13,7 +13,7 @@ import {
   DEVICE_FEATURE_TYPES,
   DEVICE_FEATURE_UNITS,
 } from '@gladysassistant/integration-sdk';
-import { publishStates } from './helpers.js';
+import { GLADYS_POLL_FREQUENCY, publishStates } from './helpers.js';
 
 const DEVICE_TYPE = 'solaredge-consumption';
 
@@ -36,12 +36,12 @@ export const consumption = {
     return gladys.externalIds(DEVICE_TYPE, siteId).device;
   },
 
-  buildDevice(gladys, { siteId, config }) {
+  buildDevice(gladys, { siteId }) {
     const ids = gladys.externalIds(DEVICE_TYPE, siteId);
     return {
       name: 'SolarEdge — Consommation',
       external_id: ids.device,
-      poll_frequency: config.poll_frequency,
+      poll_frequency: GLADYS_POLL_FREQUENCY,
       features: [
         {
           name: 'Puissance consommée',

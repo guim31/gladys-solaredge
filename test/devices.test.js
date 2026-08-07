@@ -13,6 +13,7 @@ import {
   buildTransportEntries,
   findBlueprintByDevice,
 } from '../src/devices/index.js';
+import { GLADYS_POLL_FREQUENCY } from '../src/devices/helpers.js';
 import { normalizeConfig } from '../src/config.js';
 import { SolarEdgeService } from '../src/solaredge/service.js';
 import { createFakeGladys, stateOf } from './helpers/fakeGladys.js';
@@ -57,7 +58,9 @@ test('discovery publishes one payload per available device', () => {
     assert.equal(typeof device.name, 'string');
     assert.ok(device.external_id);
     assert.ok(Array.isArray(device.features) && device.features.length > 0);
-    assert.equal(device.poll_frequency, 900);
+    // The Gladys tick, not the SolarEdge cadence — see helpers.js. This
+    // assertion used to read `900`, which is what let the invalid value ship.
+    assert.equal(device.poll_frequency, GLADYS_POLL_FREQUENCY);
     for (const feature of device.features) {
       assert.ok(feature.external_id, `${device.name}: every feature needs an external_id`);
       assert.ok(feature.category && feature.type);
