@@ -14,6 +14,13 @@
 #
 # That is ALL it takes to "publish": tag, push, and the decentralized indexer
 # does the rest (no review, no account to create).
+#
+# Note on the manual run: GitHub only offers a `workflow_dispatch` workflow in
+# the Actions UI (and over the API) once the file exists on the repository's
+# DEFAULT branch and Actions has indexed it. On a fresh repository whose
+# default branch is not the one you push to, this workflow simply does not
+# show up and the API answers 404 — set the default branch first, then reload
+# the Actions tab.
 # -----------------------------------------------------------------------------
 name: Build and publish image
 
