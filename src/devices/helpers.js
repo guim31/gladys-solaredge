@@ -16,6 +16,16 @@
  * snapshot (src/solaredge/service.js) decides whether the tick actually costs
  * a SolarEdge request, and the user's "Refresh interval" setting — in seconds
  * — is what drives that. The tick is free; the refresh is not.
+ *
+ * It must be published TOGETHER with `should_poll: true`. The core schedules a
+ * device only when both are set:
+ *
+ *     // server/lib/device/device.add.js
+ *     if (device.should_poll === true && device.poll_frequency) { ... }
+ *
+ * A device carrying `poll_frequency` alone is accepted by the discovery
+ * endpoint, created without complaint, and then simply never polled — every
+ * feature stays on "no recent value" forever, with nothing in the logs.
  */
 export const GLADYS_POLL_FREQUENCY = 60_000;
 

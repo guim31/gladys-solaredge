@@ -46,6 +46,7 @@ export const grid = {
     return {
       name: 'SolarEdge — Réseau',
       external_id: ids.device,
+      should_poll: true,
       poll_frequency: GLADYS_POLL_FREQUENCY,
       features: [
         {

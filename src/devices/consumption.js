@@ -41,6 +41,7 @@ export const consumption = {
     return {
       name: 'SolarEdge — Consommation',
       external_id: ids.device,
+      should_poll: true,
       poll_frequency: GLADYS_POLL_FREQUENCY,
       features: [
         {

@@ -6,8 +6,8 @@
     "en": "Solar production, home consumption, grid exchanges and battery storage from SolarEdge.",
     "fr": "Production solaire, consommation, échanges réseau et batterie depuis SolarEdge."
   },
-  "version": "1.0.2",
-  "docker_image": "ghcr.io/guim31/gladys-solaredge:1.0.2",
+  "version": "1.0.3",
+  "docker_image": "ghcr.io/guim31/gladys-solaredge:1.0.3",
   "gladys_version": ">=4.62.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-solaredge/main/cover.jpg",
   "transports": ["cloud"],

@@ -52,6 +52,7 @@ export const production = {
     return {
       name: 'SolarEdge — Production solaire',
       external_id: ids.device,
+      should_poll: true,
       poll_frequency: GLADYS_POLL_FREQUENCY,
       features: [
         {

@@ -114,6 +114,22 @@ function validateDiscoveredDevices(devices) {
   return problems;
 }
 
+/**
+ * Would the core actually SCHEDULE this device for polling?
+ *
+ * `server/lib/device/device.add.js` gates it on both fields:
+ *
+ *     if (device.should_poll === true && device.poll_frequency) { ... }
+ *
+ * Nothing rejects a device that declares only `poll_frequency`: the discovery
+ * endpoint accepts it, the user creates it, and it is then never polled — the
+ * dashboard shows "no recent value" forever and no log line says why. So this
+ * belongs in the contract just as much as the admission rules above.
+ */
+function wouldBePolled(device) {
+  return device.should_poll === true && Boolean(device.poll_frequency);
+}
+
 const ALL_CAPABILITIES = { production: true, consumption: true, grid: true, battery: true };
 
 function buildPayload(overrides = {}) {
@@ -184,6 +200,28 @@ test('the poll frequency is a Gladys tick, never the SolarEdge refresh rate', ()
     );
   }
   assert.deepEqual(validateDiscoveredDevices(devices), []);
+});
+
+test('every published device is one the core will actually poll', () => {
+  // Every device of this integration is read-only and refreshed by polling:
+  // one that Gladys never schedules would show nothing, forever.
+  for (const device of buildPayload()) {
+    assert.ok(wouldBePolled(device), `${device.name} would never be polled by Gladys`);
+  }
+  for (const device of buildPayload({
+    capabilities: { consumption: false, grid: false, battery: false },
+  })) {
+    assert.ok(wouldBePolled(device), `${device.name} would never be polled by Gladys`);
+  }
+});
+
+test('poll_frequency without should_poll is recognised as never-polled', () => {
+  // Guard the guard: this is exactly the payload that shipped and left every
+  // feature on "no recent value".
+  const device = buildPayload()[0];
+  assert.equal(wouldBePolled({ ...device, should_poll: undefined }), false);
+  assert.equal(wouldBePolled({ ...device, should_poll: 'true' }), false, 'the core tests === true');
+  assert.equal(wouldBePolled({ ...device, poll_frequency: undefined }), false);
 });
 
 test('the validator itself catches the bug that shipped', () => {

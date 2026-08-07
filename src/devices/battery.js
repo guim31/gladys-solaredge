@@ -136,6 +136,7 @@ export const battery = {
     return {
       name: 'SolarEdge — Batterie',
       external_id: ids.device,
+      should_poll: true,
       poll_frequency: GLADYS_POLL_FREQUENCY,
       features,
     };
