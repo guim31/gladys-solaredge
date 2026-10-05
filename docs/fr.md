@@ -73,6 +73,47 @@ Créé si votre site est équipé d'une batterie (SolarEdge Energy Bank, LG RESU
 
 \* Uniquement si l'option **Télémétrie détaillée de la batterie** est activée.
 
+## Widgets du tableau de bord
+
+Avec Gladys 5.1 ou plus récent, l'intégration propose trois widgets (**Modifier
+le tableau de bord** → **Ajouter un widget**). Ils se construisent à partir de
+ce que l'intégration a déjà en mémoire : **afficher un widget ne coûte jamais
+de requête SolarEdge**, même sur dix tableaux de bord ouverts. Les tuiles et
+les graphiques sont liés aux mesures des appareils, et se mettent à jour en
+direct dès qu'une valeur est publiée ; le bilan du jour vient de la dernière
+lecture SolarEdge, dont l'heure est indiquée sous « Actualisé à ».
+
+Les appareils doivent avoir été ajoutés depuis l'onglet **Découverte** : une
+tuile liée à une mesure qui n'existe pas dans Gladys reste vide.
+
+- **Flux d'énergie** — l'installation en un coup d'œil. Jusqu'à quatre tuiles
+  en direct : production, consommation, réseau (positive en soutirage, négative
+  en injection) et batterie (positive en charge, négative en décharge), selon
+  ce que votre site mesure. Une courbe des puissances (production, consommation
+  et réseau) sur la **période** choisie dans les réglages du widget (24 heures
+  ou une semaine). Puis le bilan du jour : production, consommation,
+  autoconsommation, énergie soutirée et injectée, revenu du jour (si vous avez
+  saisi un tarif dans le portail SolarEdge) et niveau de la batterie avec son
+  état. Le bouton **Actualiser** interroge SolarEdge immédiatement, comme le
+  bouton _Rafraîchir maintenant_ de la configuration : il compte dans le budget
+  de requêtes, et quand le budget du jour est épuisé le widget le dit au lieu
+  d'appeler l'API.
+- **Production solaire** — la production du jour, du mois, de l'année et depuis
+  la mise en service en tuiles, la courbe de puissance des panneaux sur la
+  **période** choisie (24 heures, une semaine ou un mois), le revenu du jour
+  s'il existe et l'heure de la dernière lecture.
+- **Batterie** — la jauge du niveau de charge, la puissance de la batterie, son
+  état (_En charge_ en vert, _En décharge_ en bleu, _Au repos_ ou _Désactivée_
+  en gris), l'énergie stockée et la température si la **télémétrie détaillée de
+  la batterie** est activée, et une ligne rouge **Batterie faible** quand
+  SolarEdge lève son indicateur critique. Sur un site sans batterie, le widget
+  l'indique simplement.
+
+Les widgets se rafraîchissent toutes les cinq minutes au plus, et dès qu'une
+nouvelle lecture SolarEdge arrive. Les valeurs ne bougent donc pas plus vite
+que votre **intervalle de rafraîchissement** : c'est le même budget de 300
+requêtes par jour qui s'applique.
+
 ## Configuration
 
 ### 1. Obtenir une clé d'API SolarEdge

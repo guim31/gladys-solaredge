@@ -2,15 +2,65 @@
 
 Production solaire, consommation, échanges réseau et batterie depuis SolarEdge.
 
-Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.9.0, `gladys_version` `>=4.62.0`). Mainteneur : Guilhem (`guim31`).
+Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.14.0, `gladys_version` `>=5.1.0`). Mainteneur : Guilhem (`guim31`).
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
 
-## État au 02/10/2026
+## État au 05/10/2026
 
-Version 1.0.4 publiée, indexée dans le store. Elle n'a ni widget ni déclencheur de scène : les pièges de la section « Widgets » ne la concernent qu'en cas de passage au SDK 0.14 et à Gladys 5.1.
+Version 1.0.4 publiée, indexée dans le store, sans widget (SDK 0.9, Gladys ≥ 4.62).
 
-**Aucune note de conception n'a encore été consignée pour ce dépôt** : la lire dans le code, le README et `docs/`, et l'écrire ici au fil des découvertes.
+La branche `feat/dashboard-widgets` (PR brouillon « feat: dashboard widgets (Gladys 5.1) ») monte
+le SDK en ^0.14.0, `gladys_version` en `>=5.1.0`, et ajoute trois widgets : `energy_flow`,
+`production`, `battery`. **Rien n'a été vérifié en réel** : ni instance Gladys 5.1, ni compte
+SolarEdge dans la session. À confirmer par Guilhem : le rendu des tuiles liées, l'échelle du
+graphique à trois séries (W signés), le toast du bouton _Actualiser_, et que la mise à jour depuis
+une 1.0.4 (cœur ≥ 5.1) ne casse rien. Une Release `minor` est le geste attendu : le passage à
+`>=5.1.0` coupe les mises à jour des cœurs plus anciens.
+
+## Choix de conception (widgets)
+
+- **Un widget ne coûte jamais de requête SolarEdge.** Chaque tableau de bord ouvert tire le
+  contenu ; `onWidgetGet` lit `service.lastSnapshot` (le cache, sans rafraîchir) et lie tuiles et
+  graphiques aux `external_id` publiés (`device_feature` / `device_features`) : le cœur les anime
+  depuis son propre historique. Seul le bouton _Actualiser_ appelle l'API, par la logique de
+  `refresh_now` et donc sous le budget du client ; un budget épuisé répond par un toast
+  (`WIDGET_ACTIONS.refresh` attrape l'erreur et renvoie `describeError`, déplacé dans
+  `src/actions.js` pour cela).
+- **Builders purs dans `src/widgets.js`** : entrée `{ features, snapshot, currency, timeZone }` +
+  `settings`, sortie un contenu. `index.js` ne fait que câbler (`widgetView()`). Chaque blueprint
+  expose `featureIds(gladys, ctx)` (tous les ids possibles ; seuls ceux toujours déclarés sont
+  liés : jamais le revenu ni la télémétrie batterie, qui dépendent des capacités et de la config).
+- **Textes en objets `{ en, fr }`**, pas de localisation d'après `language` : le cœur choisit, et
+  met en cache par langue de toute façon. Les nombres sont formatés dans les deux langues sans
+  séparateur de milliers (`useGrouping: false`) et la devise est posée à la main (`€3.21` /
+  `3,21 €`) : **la sortie d'`Intl` pour le français change entre versions d'ICU** (U+00A0 puis
+  U+202F comme séparateur de milliers, espace fine avant le symbole monétaire), ce qui casserait
+  les tests entre Node 22 (session) et Node 24 (CI).
+- `energy_flow` tient **exactement** dans le budget du cœur (4 tuiles + graphique + status +
+  légende + bouton = 8) : ajouter un composant en fait tomber un autre, en ordre de contenu.
+- L'heure « Actualisé à » est celle du **fuseau du site** (`site.location.timeZone`), comme le
+  reste de l'intégration, repli sur `TZ` du conteneur si inconnu.
+- `nudgeWidgets(snapshot)` appelle `requestWidgetRefresh` pour les trois widgets à chaque
+  **nouveau** `fetchedAt` (un seul nudge par lecture, pas un par appareil) : les lignes du status
+  suivent la lecture sans attendre le `ttl_seconds` de 300 s. Les états vides (`Aucune batterie…`)
+  ont un TTL de 3600 s.
+- Les réglages `interval` sont des `select` dont les valeurs sont **le sous-ensemble** de
+  `WIDGET_CHART_INTERVALS` que les constantes exportées acceptent ; `pickInterval` retombe sur
+  `last-day` pour toute autre valeur (un tableau de bord ancien).
+
+## SDK 0.9 → 0.14 (vérifié en session, le 05/10/2026)
+
+Aucun export ni méthode retiré, aucune signature changée parmi celles utilisées ici (`onAction`,
+`onPoll`, `onScanRequest`, `onConfigUpdated`, `publishStates`, `publishState`,
+`publishTransports`, `setConnectionStatus`, `externalIds`, `handleShutdown`, `getConfig`,
+`publishDiscoveredDevices`). Ajouts : `onWidgetGet`, `onWidgetAction`, `onWidgetGetImage`,
+`requestWidgetRefresh`, `onSceneAction`, `publishSceneEvent`, météo, `wakeOnLan`, `getHouses` ;
+constantes `WIDGET_*`, `validateWidgetContent`, `validateWidgetImage` ; nouvelles catégories
+(`BATTERY_STORAGE`, `GRID_SENSOR`, `HOME_OUTPUT_SENSOR`…) et types (`ENERGY_PRODUCTION_SENSOR.POWER`,
+`BATTERY.CHARGING`, `TEXT.SELECT`) — les catégories actuelles des appareils restent valides, et
+les changer casserait les appareils existants (fonctionnalités figées). Les 99 tests d'origine
+passent sans modification.
 
 ## Travailler sur ce dépôt
 
@@ -29,6 +79,9 @@ Version 1.0.4 publiée, indexée dans le store. Elle n'a ni widget ni déclenche
   commit suivant.
 - Le dépôt est **public** : aucun secret, aucune adresse ni détail d'infrastructure privée, ni
   ici, ni dans les tests, ni dans les captures.
+- Le validateur du store (`npx -y github:GladysAssistant/integration-store`) exige Node ≥ 24 dans
+  son `engines` mais tourne en Node 22 (avertissement `EBADENGINE` sans conséquence). Il signale
+  l'absence de `categories` dans le manifeste : avertissement connu, non bloquant.
 
 ## Pièges du cœur Gladys (communs aux intégrations de guim31)
 
@@ -88,6 +141,11 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
 - **Les clés de widgets, de déclencheurs et d'actions sont figées une fois publiées.**
 - Passer `gladys_version` à `>=5.1.0` coupe les mises à jour des cœurs plus anciens, qui
   refusent les champs inconnus du manifeste.
+- `validateWidgetContent` (SDK 0.14) : un `status` sans ligne est refusé (ne pas l'émettre), un
+  `interval` hors liste est ignoré (donc `last-day`), un `ttl_seconds` hors 10–3600 est borné,
+  une valeur de status > 40 caractères tronquée. Une `gauge` liée (`device_feature`) prend les
+  bornes de la fonctionnalité : ne pas répéter `min`/`max`.
+- Un `button` sans `style` est accepté : c'est la forme à préférer (pas de `primary`).
 
 ## Publication et store
 

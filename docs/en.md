@@ -70,6 +70,44 @@ Created when your site has storage (SolarEdge Energy Bank, LG RESU…).
 
 \* Only when the **Detailed battery telemetry** setting is enabled.
 
+## Dashboard widgets
+
+With Gladys 5.1 or newer, the integration offers three widgets (**Edit
+dashboard** → **Add a widget**). They are built from what the integration
+already holds in memory: **showing a widget never costs a SolarEdge request**,
+even with ten dashboards open. Tiles and charts are bound to the device
+features and update live as soon as a value is published; today's balance
+comes from the last SolarEdge reading, whose time is shown as "Updated at".
+
+The devices must have been added from the **Discovery** tab: a tile bound to a
+feature Gladys does not have stays empty.
+
+- **Energy flow** — the installation at a glance. Up to four live tiles:
+  production, consumption, grid (positive when importing, negative when
+  exporting) and battery (positive when charging, negative when discharging),
+  depending on what your site measures. A chart of the powers (production,
+  consumption and grid) over the **period** chosen in the widget settings (24
+  hours or a week). Then today's balance: production, consumption,
+  self-consumption, imported and exported energy, today's revenue (when a
+  tariff is entered in the SolarEdge portal) and the battery level with its
+  state. The **Refresh** button reads SolarEdge right away, like the _Refresh
+  now_ button of the configuration screen: it counts against the request
+  budget, and once the day's budget is spent the widget says so instead of
+  calling the API.
+- **Solar production** — production today, this month, this year and since
+  commissioning as tiles, the PV power curve over the chosen **period** (24
+  hours, a week or a month), today's revenue when it exists and the time of
+  the last reading.
+- **Battery** — the charge level gauge, the battery power, its state
+  (_Charging_ in green, _Discharging_ in blue, _Idle_ or _Disabled_ in grey),
+  the stored energy and the temperature when **Detailed battery telemetry** is
+  enabled, and a red **Battery low** row when SolarEdge raises its critical
+  flag. On a site without a battery the widget simply says so.
+
+Widgets refresh every five minutes at most, and as soon as a new SolarEdge
+reading lands. The values therefore never move faster than your **refresh
+interval**: the same 300 requests/day budget applies.
+
 ## Setup
 
 ### 1. Get a SolarEdge API key
