@@ -29,6 +29,7 @@ export const ERROR_CODES = {
   NOT_FOUND: 'not_found', // unknown site id
   RATE_LIMITED: 'rate_limited', // SolarEdge refused: too many requests
   QUOTA_EXCEEDED: 'quota_exceeded', // OUR own daily budget is spent
+  NOT_READY: 'not_ready', // the integration has not reached SolarEdge yet (no site known)
   UNAVAILABLE: 'unavailable', // network error, timeout, 5xx
   UNEXPECTED: 'unexpected',
 };

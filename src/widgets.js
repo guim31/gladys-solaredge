@@ -385,8 +385,9 @@ const LOCALES = { en: 'en-GB', fr: 'fr-FR' };
  * @param {number} digits maximum fraction digits
  * @param {string} locale
  */
-function localizeNumber(value, digits, locale) {
+function localizeNumber(value, digits, locale, minimumDigits = 0) {
   return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: minimumDigits,
     maximumFractionDigits: digits,
     useGrouping: false,
   }).format(value);
@@ -399,22 +400,25 @@ function localizeNumber(value, digits, locale) {
  * @param {string} unit
  */
 export function formatNumber(value, digits, unit) {
+  // English writes the percent sign attached (62%), French spaces it (62 %).
+  const separator = unit === '%' ? '' : ' ';
   return {
-    en: `${localizeNumber(value, digits, LOCALES.en)} ${unit}`,
+    en: `${localizeNumber(value, digits, LOCALES.en)}${separator}${unit}`,
     fr: `${localizeNumber(value, digits, LOCALES.fr)} ${unit}`,
   };
 }
 
 /**
- * An amount in the configured currency (`€3.21` / `3,21 €`).
+ * An amount in the configured currency, always with two decimals (`€3.20` /
+ * `3,20 €`, `€0.00` / `0,00 €`): an amount reads as money, not as a count.
  * @param {number} value
  * @param {string} [currency] manifest `currency` value
  */
 export function formatMoney(value, currency) {
   const symbol = CURRENCY_SYMBOLS[currency] ?? CURRENCY_SYMBOLS.euro;
   return {
-    en: `${symbol}${localizeNumber(value, 2, LOCALES.en)}`,
-    fr: `${localizeNumber(value, 2, LOCALES.fr)} ${symbol}`,
+    en: `${symbol}${localizeNumber(value, 2, LOCALES.en, 2)}`,
+    fr: `${localizeNumber(value, 2, LOCALES.fr, 2)} ${symbol}`,
   };
 }
 

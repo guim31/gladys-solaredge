@@ -189,9 +189,10 @@ test('the chart interval settings offer exactly what the builders accept', () =>
   assert.equal(manifest.widgets.find((w) => w.key === WIDGET.BATTERY).settings, undefined);
 });
 
-test('the widget with a button declares an action timeout that covers a refresh', () => {
+test('the widget Refresh button gets the same timeout as the action it reuses', () => {
   const energyFlow = manifest.widgets.find((w) => w.key === WIDGET.ENERGY_FLOW);
-  // A refresh is 2 to 4 SolarEdge requests: well under 30 s, but never under
-  // the 15 s a slow cloud afternoon can take.
-  assert.ok(energyFlow.action_timeout_seconds >= 15);
+  const refreshNow = manifest.actions.find((a) => a.key === 'refresh_now');
+  // Same work (up to a bootstrap plus the live requests, each with retries),
+  // same budget of time.
+  assert.equal(energyFlow.action_timeout_seconds, refreshNow.timeout_seconds);
 });

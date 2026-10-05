@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GladysApiError } from '@gladysassistant/integration-sdk';
-import { ACTIONS, WIDGET_ACTIONS, describeError } from '../src/actions.js';
+import { ACTIONS, NOT_CONFIGURED_MESSAGE, WIDGET_ACTIONS, describeError } from '../src/actions.js';
 import { normalizeConfig } from '../src/config.js';
 import { ERROR_CODES, SolarEdgeError } from '../src/solaredge/client.js';
 import { SolarEdgeService } from '../src/solaredge/service.js';
@@ -133,9 +133,19 @@ test('describeError blames the right side', () => {
     describeError(new SolarEdgeError('x', { code: ERROR_CODES.RATE_LIMITED })).fr,
     /Quota/,
   );
+  const notReady = describeError(new SolarEdgeError('x', { code: ERROR_CODES.NOT_READY }));
+  assert.match(notReady.fr, /pas encore pu joindre SolarEdge/);
+  assert.match(notReady.en, /not reached SolarEdge yet/);
   assert.match(
     describeError(new Error('ECONNRESET')).fr,
     /Impossible de joindre SolarEdge : ECONNRESET/,
   );
   assert.match(describeError(undefined).en, /unknown error/);
+});
+
+test('the "not configured" message exists in both languages and fits a toast', () => {
+  assert.ok(NOT_CONFIGURED_MESSAGE.en && NOT_CONFIGURED_MESSAGE.fr);
+  for (const text of Object.values(NOT_CONFIGURED_MESSAGE)) {
+    assert.ok(text.length <= 200);
+  }
 });

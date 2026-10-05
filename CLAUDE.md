@@ -124,6 +124,10 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
 - Un champ `secret` dans les `fields` d'une **action** est impossible à remplir (la saisie
   s'efface à chaque frappe), et une action n'applique **aucun `default`**, ni à l'affichage ni
   côté serveur, tout en exigeant les champs `required` (422).
+- Une action ou une action de widget qui **lève** n'envoie à Gladys qu'une chaîne
+  (`error: e.message`, SDK `_runHandler`) : un message bilingue doit être **résolu**, pas levé
+  (`NOT_CONFIGURED_MESSAGE`, `describeError` dans `src/actions.js`). Une erreur en français seul
+  levée depuis `refreshAll` donnait un toast anglais mélangé : d'où le code `NOT_READY`.
 
 **Widgets, déclencheurs, actions de scène (SDK ≥ 0.14, Gladys ≥ 5.1)**
 

@@ -180,7 +180,7 @@ test('energy_flow on a full site: four live tiles, three-series chart, balance, 
   assert.deepEqual(row(status, 'Production du jour').value, { en: '21.4 kWh', fr: '21,4 kWh' });
   assert.deepEqual(row(status, 'Revenu du jour').value, { en: '€3.21', fr: '3,21 €' });
   const batteryRow = row(status, 'Batterie');
-  assert.deepEqual(batteryRow.value, { en: '62 % · Charging', fr: '62 % · En charge' });
+  assert.deepEqual(batteryRow.value, { en: '62% · Charging', fr: '62 % · En charge' });
   assert.equal(batteryRow.color, 'success');
 
   const caption = one(content, 'text');
@@ -399,6 +399,10 @@ test('numbers, money and times are formatted for each language', () => {
   // No thousands grouping: its character differs between ICU versions.
   assert.deepEqual(formatNumber(1234.5, 1, 'kWh'), { en: '1234.5 kWh', fr: '1234,5 kWh' });
   assert.deepEqual(formatNumber(21.4, 2, 'kWh'), { en: '21.4 kWh', fr: '21,4 kWh' });
+  assert.deepEqual(formatNumber(62, 0, '%'), { en: '62%', fr: '62 %' });
+  // Money always carries two decimals.
+  assert.deepEqual(formatMoney(3.2, 'euro'), { en: '€3.20', fr: '3,20 €' });
+  assert.deepEqual(formatMoney(0, 'euro'), { en: '€0.00', fr: '0,00 €' });
   assert.deepEqual(formatMoney(3.21, 'dollar'), { en: '$3.21', fr: '3,21 $' });
   assert.deepEqual(formatMoney(3.21, 'pound-sterling'), { en: '£3.21', fr: '3,21 £' });
   assert.deepEqual(formatMoney(3.21, 'unknown'), { en: '€3.21', fr: '3,21 €' });

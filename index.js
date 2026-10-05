@@ -19,8 +19,8 @@
 import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { connectionFingerprint, isConfigured, normalizeConfig } from './src/config.js';
 import { SolarEdgeService } from './src/solaredge/service.js';
-import { ERROR_CODES } from './src/solaredge/client.js';
-import { ACTIONS, WIDGET_ACTIONS, describeError } from './src/actions.js';
+import { ERROR_CODES, SolarEdgeError } from './src/solaredge/client.js';
+import { ACTIONS, NOT_CONFIGURED_MESSAGE, WIDGET_ACTIONS, describeError } from './src/actions.js';
 import {
   WIDGET,
   buildBatteryContent,
@@ -129,7 +129,8 @@ gladys.onPoll(async (device) => {
 for (const [key, handler] of Object.entries(ACTIONS)) {
   gladys.onAction(key, async (fields) => {
     if (!service) {
-      throw new Error("L'intégration n'est pas configurée : renseignez votre clé d'API SolarEdge.");
+      // Resolved, not thrown: a thrown error is a single string, this is bilingual.
+      return NOT_CONFIGURED_MESSAGE;
     }
     return handler(gladys, { fields, config, service, refreshAll });
   });
@@ -161,10 +162,7 @@ gladys.onWidgetAction(WIDGET.ENERGY_FLOW, async (actionKey) => {
     throw new Error(`Unknown widget action: ${actionKey}`);
   }
   if (!service) {
-    return {
-      en: 'The integration is not configured yet: paste your SolarEdge API key.',
-      fr: "L'intégration n'est pas configurée : renseignez votre clé d'API SolarEdge.",
-    };
+    return NOT_CONFIGURED_MESSAGE;
   }
   return handler(gladys, { config, service, refreshAll });
 });
@@ -316,7 +314,11 @@ async function refreshAll() {
     await bootstrap({ force: true });
   }
   if (!context) {
-    throw new Error("L'intégration n'a pas encore pu joindre SolarEdge.");
+    // A coded error: describeError turns it into a bilingual message, for the
+    // Configuration screen and for the widget toast alike.
+    throw new SolarEdgeError('The integration has not reached SolarEdge yet.', {
+      code: ERROR_CODES.NOT_READY,
+    });
   }
 
   const snapshot = await service.getSnapshot({ force: true });

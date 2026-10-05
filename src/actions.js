@@ -21,6 +21,16 @@ import { WIDGET_ACTION } from './widgets.js';
 
 const logger = createLogger({ name: 'actions' });
 
+/**
+ * What the user reads, from a button or a widget, while no API key is set.
+ * Resolved rather than thrown: a thrown error reaches Gladys as a single
+ * string (`error: e.message`), so only a resolved message can be bilingual.
+ */
+export const NOT_CONFIGURED_MESSAGE = {
+  en: 'The integration is not configured yet: paste your SolarEdge API key in the settings.',
+  fr: "L'intégration n'est pas configurée : renseignez votre clé d'API SolarEdge dans les réglages.",
+};
+
 export const ACTIONS = {
   /**
    * "Test the connection": the button a user presses right after pasting an
@@ -161,6 +171,11 @@ export function describeError(err) {
       return {
         en: 'SolarEdge daily request quota reached: increase the refresh interval, retry tomorrow.',
         fr: "Quota de requêtes SolarEdge atteint : augmentez l'intervalle de rafraîchissement et réessayez demain.",
+      };
+    case ERROR_CODES.NOT_READY:
+      return {
+        en: 'The integration has not reached SolarEdge yet: check the connection status above.',
+        fr: "L'intégration n'a pas encore pu joindre SolarEdge : vérifiez l'état de la connexion ci-dessus.",
       };
     default:
       return {
