@@ -20,13 +20,14 @@ import {
   DEVICE_FEATURE_UNITS,
 } from '@gladysassistant/integration-sdk';
 import { BATTERY_STATES } from '../solaredge/snapshot.js';
-import { GLADYS_POLL_FREQUENCY, publishStates } from './helpers.js';
+import { GLADYS_POLL_FREQUENCY, mapFeatureIds, publishStates } from './helpers.js';
 
 const DEVICE_TYPE = 'solaredge-battery';
 
 const logger = createLogger({ name: 'battery' });
 
-const FEATURE = {
+/** Feature keys of this device (the suffix of each feature external_id). */
+export const FEATURE = {
   LEVEL: 'charge-level',
   POWER: 'power',
   STATE: 'state',
@@ -52,6 +53,10 @@ export const battery = {
 
   deviceExternalId(gladys, { siteId }) {
     return gladys.externalIds(DEVICE_TYPE, siteId).device;
+  },
+
+  featureIds(gladys, { siteId }) {
+    return mapFeatureIds(FEATURE, gladys.externalIds(DEVICE_TYPE, siteId));
   },
 
   buildDevice(gladys, { siteId, config }) {

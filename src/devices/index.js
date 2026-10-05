@@ -5,6 +5,7 @@
 //   - key                             : short identifier (used in logs)
 //   - isAvailable(capabilities)       : does THIS installation have it?
 //   - deviceExternalId(gladys, ctx)   : the device external_id (for dispatch)
+//   - featureIds(gladys, ctx)         : feature external_ids by name (widgets)
 //   - buildDevice(gladys, ctx)        : the discovery payload sent to Gladys
 //   - onPoll(gladys, ctx, snapshot)   : publish the states of one refresh
 //

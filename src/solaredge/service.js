@@ -68,6 +68,18 @@ export class SolarEdgeService {
   }
 
   /**
+   * The last snapshot read, however old — or `null` before the first one.
+   *
+   * This is what the dashboard widgets read: a widget is pulled by every open
+   * dashboard, and letting it refresh SolarEdge would spend the 300 requests/day
+   * budget on page loads. The snapshot only moves on the polling schedule (and
+   * on "Refresh now"); the live tiles follow the published states on their own.
+   */
+  get lastSnapshot() {
+    return this.snapshot;
+  }
+
+  /**
    * Resolve the site to work on: the one configured by the user, or — when the
    * field is left empty — the single site the API key gives access to.
    */

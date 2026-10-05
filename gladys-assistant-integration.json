@@ -8,7 +8,7 @@
   },
   "version": "1.0.4",
   "docker_image": "ghcr.io/guim31/gladys-solaredge:1.0.4",
-  "gladys_version": ">=4.62.0",
+  "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-solaredge/main/cover.jpg",
   "transports": ["cloud"],
   "config_schema": [
@@ -216,6 +216,116 @@
         "fr": "Nombre de requêtes SolarEdge utilisées aujourd'hui, et rafraîchissements restants."
       },
       "timeout_seconds": 15
+    }
+  ],
+  "widgets": [
+    {
+      "key": "energy_flow",
+      "label": {
+        "en": "Energy flow",
+        "fr": "Flux d'énergie"
+      },
+      "description": {
+        "en": "Live powers, today’s balance and the power chart, with a refresh button.",
+        "fr": "Puissances en direct, bilan du jour et courbe de puissance, avec un bouton Actualiser."
+      },
+      "icon": "sun",
+      "settings": [
+        {
+          "key": "interval",
+          "type": "select",
+          "label": {
+            "en": "Chart period",
+            "fr": "Période du graphique"
+          },
+          "description": {
+            "en": "History window of the power chart.",
+            "fr": "Fenêtre d’historique de la courbe de puissance."
+          },
+          "required": false,
+          "default": "last-day",
+          "options": [
+            {
+              "value": "last-day",
+              "label": {
+                "en": "Last 24 hours",
+                "fr": "Dernières 24 heures"
+              }
+            },
+            {
+              "value": "last-week",
+              "label": {
+                "en": "Last week",
+                "fr": "Dernière semaine"
+              }
+            }
+          ]
+        }
+      ],
+      "action_timeout_seconds": 60
+    },
+    {
+      "key": "production",
+      "label": {
+        "en": "Solar production",
+        "fr": "Production solaire"
+      },
+      "description": {
+        "en": "Production today, this month, this year and lifetime, with the PV power curve.",
+        "fr": "Production du jour, du mois, de l'année et totale, avec la courbe de puissance."
+      },
+      "icon": "trending-up",
+      "settings": [
+        {
+          "key": "interval",
+          "type": "select",
+          "label": {
+            "en": "Chart period",
+            "fr": "Période du graphique"
+          },
+          "description": {
+            "en": "History window of the power chart.",
+            "fr": "Fenêtre d’historique de la courbe de puissance."
+          },
+          "required": false,
+          "default": "last-day",
+          "options": [
+            {
+              "value": "last-day",
+              "label": {
+                "en": "Last 24 hours",
+                "fr": "Dernières 24 heures"
+              }
+            },
+            {
+              "value": "last-week",
+              "label": {
+                "en": "Last week",
+                "fr": "Dernière semaine"
+              }
+            },
+            {
+              "value": "last-month",
+              "label": {
+                "en": "Last month",
+                "fr": "Dernier mois"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "battery",
+      "label": {
+        "en": "Battery",
+        "fr": "Batterie"
+      },
+      "description": {
+        "en": "Charge level, battery power and state, stored energy and temperature.",
+        "fr": "Niveau de charge, puissance et état de la batterie, énergie stockée et température."
+      },
+      "icon": "battery-charging"
     }
   ]
 }

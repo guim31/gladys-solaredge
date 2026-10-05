@@ -9,11 +9,27 @@
 //
 // Handlers receive the integration runtime (`deps`) rather than closing over
 // module state: index.js owns the lifecycle, this file owns the wording.
+//
+// The same file holds the dashboard widget buttons (WIDGET_ACTIONS) and the
+// wording of the failures shown to the user (describeError): one place to read
+// to know what the user sees.
 // -----------------------------------------------------------------------------
 
-import { createLogger } from '@gladysassistant/integration-sdk';
+import { createLogger, GladysApiError } from '@gladysassistant/integration-sdk';
+import { ERROR_CODES } from './solaredge/client.js';
+import { WIDGET_ACTION } from './widgets.js';
 
 const logger = createLogger({ name: 'actions' });
+
+/**
+ * What the user reads, from a button or a widget, while no API key is set.
+ * Resolved rather than thrown: a thrown error reaches Gladys as a single
+ * string (`error: e.message`), so only a resolved message can be bilingual.
+ */
+export const NOT_CONFIGURED_MESSAGE = {
+  en: 'The integration is not configured yet: paste your SolarEdge API key in the settings.',
+  fr: "L'intégration n'est pas configurée : renseignez votre clé d'API SolarEdge dans les réglages.",
+};
 
 export const ACTIONS = {
   /**
@@ -102,4 +118,69 @@ function describeCapabilities(capabilities) {
     fr.push('batterie');
   }
   return { en: en.join(', '), fr: fr.join(', ') };
+}
+
+/**
+ * Buttons of the dashboard widgets (`action.key` of a `button` component),
+ * resolved to the toast the core shows. Unlike a manifest action, a widget
+ * action that throws shows the user a bare failure: these handlers catch what
+ * SolarEdge refuses and answer with the same wording as the status screen.
+ */
+export const WIDGET_ACTIONS = {
+  /**
+   * "Refresh" on the energy_flow widget: the "Refresh now" action, from the
+   * dashboard. It goes through the same client-side budget: once the daily
+   * quota is spent, the toast says so instead of a failed request.
+   */
+  async [WIDGET_ACTION.REFRESH](gladys, deps) {
+    logger.info('Widget action refresh');
+    try {
+      return await ACTIONS.refresh_now(gladys, deps);
+    } catch (err) {
+      logger.warn(`Widget refresh refused: ${err.message}`);
+      return describeError(err);
+    }
+  },
+};
+
+/** Turn a failure into something the user can act on. */
+export function describeError(err) {
+  // A GladysApiError means the HOST refused us — a rejected discovery payload,
+  // an expired integration token — not SolarEdge. Blaming SolarEdge here would
+  // send the user hunting through the monitoring portal for nothing.
+  if (err instanceof GladysApiError) {
+    return {
+      en: `Gladys refused the request (${err.code} / HTTP ${err.status}): ${err.message}`,
+      fr: `Gladys a refusé la requête (${err.code} / HTTP ${err.status}) : ${err.message}`,
+    };
+  }
+
+  switch (err?.code) {
+    case ERROR_CODES.UNAUTHORIZED:
+      return {
+        en: 'SolarEdge refused the API key: check it in the monitoring portal (Admin > Site Access).',
+        fr: "SolarEdge a refusé la clé d'API : vérifiez-la dans le portail de supervision (Admin > Accès au site).",
+      };
+    case ERROR_CODES.NOT_FOUND:
+      return {
+        en: `SolarEdge could not resolve the site: ${err.message}`,
+        fr: `Site SolarEdge introuvable : ${err.message}`,
+      };
+    case ERROR_CODES.QUOTA_EXCEEDED:
+    case ERROR_CODES.RATE_LIMITED:
+      return {
+        en: 'SolarEdge daily request quota reached: increase the refresh interval, retry tomorrow.',
+        fr: "Quota de requêtes SolarEdge atteint : augmentez l'intervalle de rafraîchissement et réessayez demain.",
+      };
+    case ERROR_CODES.NOT_READY:
+      return {
+        en: 'The integration has not reached SolarEdge yet: check the connection status above.',
+        fr: "L'intégration n'a pas encore pu joindre SolarEdge : vérifiez l'état de la connexion ci-dessus.",
+      };
+    default:
+      return {
+        en: `Could not reach SolarEdge: ${err?.message ?? 'unknown error'}`,
+        fr: `Impossible de joindre SolarEdge : ${err?.message ?? 'erreur inconnue'}`,
+      };
+  }
 }

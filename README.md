@@ -9,6 +9,7 @@ Built on the official
 [JavaScript integration SDK](https://github.com/GladysAssistant/integration-sdk-js)
 and the structure of the
 [official template](https://github.com/GladysAssistant/integration-template-js).
+Requires Gladys **5.1 or newer** (dashboard widgets).
 
 ## Devices
 
@@ -25,6 +26,32 @@ without a consumption meter simply gets the production device.
 Signed powers are the point: a single feature per flow, so a Gladys scene can
 say "when grid power < −1000 W, start the water heater" — i.e. "use the
 surplus instead of selling it".
+
+## Dashboard widgets
+
+Three widgets (Gladys ≥ 5.1), declared in the manifest `widgets` field and
+built by pure functions in `src/widgets.js`:
+
+| Widget      | Key           | Shows                                                                                                                                                                                 | Settings                                        |
+| ----------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Energy flow | `energy_flow` | Live PV / home / grid / battery power tiles, the power chart, today's balance (production, consumption, self-consumption, imported, exported, revenue, battery), a **Refresh** button | Chart period: last 24 hours (default) or a week |
+| Production  | `production`  | Today / month / year / lifetime tiles, the PV power area chart, today's revenue and the time of the last reading                                                                      | Chart period: 24 hours, a week or a month       |
+| Battery     | `battery`     | Charge gauge, battery power, state, stored energy and temperature (with the detailed telemetry), a red "Battery low" row                                                              | —                                               |
+
+Two rules keep them cheap:
+
+- **A widget never calls SolarEdge.** Every open dashboard pulls the content, so
+  the builders read the last snapshot kept in memory
+  (`SolarEdgeService.lastSnapshot`) and bind the tiles and charts to the
+  published device features (`device_feature` / `device_features`): the core
+  keeps them live from its own history. The only request a widget can trigger
+  is the **Refresh** button, which goes through the same `refresh_now` logic
+  and the same daily budget — a spent budget answers with a toast.
+- **Content is validated like the core does.** Every content the tests
+  produce goes through the SDK's `validateWidgetContent` and must come back
+  clean (8 components at most, 6 tiles, 1 chart, 1 status, 2 texts, 4
+  buttons), and every bound feature must be one the discovery payload
+  declares.
 
 ## The constraint that shapes the design: 300 requests/day
 
@@ -62,7 +89,8 @@ integration uses ~240 requests/day.
 │  │  ├─ grid.js
 │  │  ├─ battery.js
 │  │  └─ helpers.js                  #   state batches that skip missing readings
-│  ├─ actions.js                     # Configuration screen buttons
+│  ├─ widgets.js                     # dashboard widget contents (pure builders)
+│  ├─ actions.js                     # Configuration + widget buttons, error wording
 │  └─ config.js                      # config defaults + normalization
 ├─ docs/{en,fr}.md                   # user documentation, re-hosted by Gladys
 ├─ gladys-assistant-integration.json # manifest (name, config schema, actions, image)
@@ -111,8 +139,9 @@ The tests use fixtures shaped like real SolarEdge payloads
 (`test/helpers/solaredgeFixtures.js`) and cover what is easy to get wrong: the
 unit announced by `currentPowerFlow` (W or kW depending on the site), the
 power signs derived from the `connections` array, site-local day boundaries,
-the request budget, and the rule that a **missing reading is never published
-as a zero**.
+the request budget, the rule that a **missing reading is never published as a
+zero**, and the widget contents (validated with the SDK's
+`validateWidgetContent`, on full and on production-only sites).
 
 ## Validate before publishing
 

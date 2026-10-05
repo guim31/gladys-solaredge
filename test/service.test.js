@@ -173,3 +173,16 @@ test('a failed energyDetails refresh keeps the previous breakdown', async () => 
   const second = await service.getSnapshot();
   assert.equal(second.energy.consumption, 9.8, 'the last known breakdown is kept');
 });
+
+test('lastSnapshot hands back the cache without a single request, however old', async () => {
+  const { service, client, advance } = createService();
+  assert.equal(service.lastSnapshot, null, 'nothing before the first refresh');
+  assert.deepEqual(client.calls, []);
+
+  const snapshot = await service.getSnapshot();
+  const before = client.calls.length;
+  // Hours later, long past the TTL: a widget pull must still cost nothing.
+  advance(6 * 3600);
+  assert.equal(service.lastSnapshot, snapshot);
+  assert.equal(client.calls.length, before);
+});
