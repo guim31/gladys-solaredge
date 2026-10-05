@@ -59,3 +59,19 @@ export async function publishStates(gladys, entries) {
   }
   return states;
 }
+
+/**
+ * External ids of every feature a device module can declare, keyed by the
+ * module's own FEATURE names (`{ POWER: 'ext:...:power', ... }`).
+ *
+ * Built for the dashboard widgets, which bind their live tiles and charts to
+ * published features by external_id. Whether a given feature is actually
+ * declared still depends on the capabilities (revenue) and the configuration
+ * (storage telemetry): a widget must only bind to the always-declared ones.
+ *
+ * @param {Record<string, string>} FEATURE the module's feature keys
+ * @param {{ feature: (key: string) => string }} ids `gladys.externalIds(...)`
+ */
+export function mapFeatureIds(FEATURE, ids) {
+  return Object.fromEntries(Object.entries(FEATURE).map(([name, key]) => [name, ids.feature(key)]));
+}

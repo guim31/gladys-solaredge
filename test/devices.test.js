@@ -272,3 +272,19 @@ test('transports report the cloud, and flag the quota instead of hiding it', () 
   const down = buildTransportEntries(gladys, context, { error: { code: 'unavailable' } });
   assert.equal(down[0].transport, DEVICE_TRANSPORTS.UNREACHABLE);
 });
+
+test('featureIds names every feature a device can declare, with the discovery ids', () => {
+  const gladys = createFakeGladys();
+  const context = createContext({ config: { storage_details: true } });
+  const declared = new Set(
+    buildDiscoveredDevices(gladys, context).flatMap((d) => d.features.map((f) => f.external_id)),
+  );
+  for (const blueprint of DEVICE_BLUEPRINTS) {
+    const ids = blueprint.featureIds(gladys, context);
+    assert.ok(Object.keys(ids).length >= 3, `${blueprint.key} has feature ids`);
+    for (const [name, id] of Object.entries(ids)) {
+      assert.ok(declared.has(id), `${blueprint.key}.${name} (${id}) is not declared`);
+      assert.ok(id.startsWith(blueprint.deviceExternalId(gladys, context)), 'same device prefix');
+    }
+  }
+});

@@ -13,13 +13,14 @@ import {
   DEVICE_FEATURE_TYPES,
   DEVICE_FEATURE_UNITS,
 } from '@gladysassistant/integration-sdk';
-import { GLADYS_POLL_FREQUENCY, publishStates } from './helpers.js';
+import { GLADYS_POLL_FREQUENCY, mapFeatureIds, publishStates } from './helpers.js';
 
 const DEVICE_TYPE = 'solaredge-consumption';
 
 const logger = createLogger({ name: 'consumption' });
 
-const FEATURE = {
+/** Feature keys of this device (the suffix of each feature external_id). */
+export const FEATURE = {
   POWER: 'power',
   ENERGY_TODAY: 'energy-today',
   SELF_CONSUMPTION_TODAY: 'self-consumption-today',
@@ -34,6 +35,10 @@ export const consumption = {
 
   deviceExternalId(gladys, { siteId }) {
     return gladys.externalIds(DEVICE_TYPE, siteId).device;
+  },
+
+  featureIds(gladys, { siteId }) {
+    return mapFeatureIds(FEATURE, gladys.externalIds(DEVICE_TYPE, siteId));
   },
 
   buildDevice(gladys, { siteId }) {

@@ -7,18 +7,28 @@
 //   1. instantiate the SDK (connection, auth, reconnection: handled for you);
 //   2. register the event handlers BEFORE connect();
 //   3. once connected, bootstrap the site (resolve it, detect what it has,
-//      publish the matching devices) and keep retrying until it works.
+//      publish the matching devices) and keep retrying until it works;
+//   4. serve the dashboard widgets from the snapshot already in memory — a
+//      widget never triggers a SolarEdge request (src/widgets.js).
 //
 // Environment variables injected by the Gladys supervisor:
 //   - GLADYS_HOST_API_URL, GLADYS_INTEGRATION_TOKEN, GLADYS_INTEGRATION_SELECTOR
 // The SDK reads them automatically: `new GladysIntegration()` is enough.
 // -----------------------------------------------------------------------------
 
-import { GladysApiError, GladysIntegration, logger } from '@gladysassistant/integration-sdk';
+import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { connectionFingerprint, isConfigured, normalizeConfig } from './src/config.js';
 import { SolarEdgeService } from './src/solaredge/service.js';
 import { ERROR_CODES } from './src/solaredge/client.js';
-import { ACTIONS } from './src/actions.js';
+import { ACTIONS, WIDGET_ACTIONS, describeError } from './src/actions.js';
+import {
+  WIDGET,
+  buildBatteryContent,
+  buildEnergyFlowContent,
+  buildProductionContent,
+  buildUnavailableContent,
+  widgetFeatures,
+} from './src/widgets.js';
 import {
   availableBlueprints,
   buildDiscoveredDevices,
@@ -42,6 +52,9 @@ let lastTransportKey = null;
 // Per-device timestamp of the last snapshot actually published, so a Gladys
 // tick that brings no new SolarEdge reading publishes nothing.
 const lastPublishedSnapshot = new Map();
+// Timestamp of the last snapshot the widgets were nudged for: one nudge per
+// SolarEdge reading, not one per device publishing it.
+let lastNudgedSnapshot = null;
 
 const RETRY_MIN_DELAY = 60_000;
 const RETRY_MAX_DELAY = 1_800_000;
@@ -102,6 +115,7 @@ gladys.onPoll(async (device) => {
     }
     await blueprint.onPoll(gladys, context, snapshot);
     lastPublishedSnapshot.set(device.external_id, snapshot.fetchedAt);
+    nudgeWidgets(snapshot);
     await reportHealth(null);
   } catch (err) {
     await reportHealth(err);
@@ -119,6 +133,72 @@ for (const [key, handler] of Object.entries(ACTIONS)) {
     }
     return handler(gladys, { fields, config, service, refreshAll });
   });
+}
+
+// --- Dashboard widgets (Gladys 5.1+) -----------------------------------------
+// Pure builders (src/widgets.js) fed with what is already in memory: the
+// feature ids of the published devices and the last snapshot. Nothing here
+// calls SolarEdge — a dashboard load must never cost a request.
+gladys.onWidgetGet(WIDGET.ENERGY_FLOW, async ({ settings }) => {
+  const view = widgetView();
+  return view ? buildEnergyFlowContent(view, settings) : buildUnavailableContent();
+});
+
+gladys.onWidgetGet(WIDGET.PRODUCTION, async ({ settings }) => {
+  const view = widgetView();
+  return view ? buildProductionContent(view, settings) : buildUnavailableContent();
+});
+
+gladys.onWidgetGet(WIDGET.BATTERY, async () => {
+  const view = widgetView();
+  return view ? buildBatteryContent(view) : buildUnavailableContent();
+});
+
+// The "Refresh" button of the energy_flow widget: the only widget action.
+gladys.onWidgetAction(WIDGET.ENERGY_FLOW, async (actionKey) => {
+  const handler = WIDGET_ACTIONS[actionKey];
+  if (!handler) {
+    throw new Error(`Unknown widget action: ${actionKey}`);
+  }
+  if (!service) {
+    return {
+      en: 'The integration is not configured yet: paste your SolarEdge API key.',
+      fr: "L'intégration n'est pas configurée : renseignez votre clé d'API SolarEdge.",
+    };
+  }
+  return handler(gladys, { config, service, refreshAll });
+});
+
+/** What the widget builders need, or `null` before the site is known. */
+function widgetView() {
+  if (!context) {
+    return null;
+  }
+  return {
+    features: widgetFeatures(gladys, context),
+    snapshot: service.lastSnapshot,
+    currency: config.currency,
+    timeZone: context.site?.location?.timeZone,
+  };
+}
+
+/**
+ * Tell the core a new SolarEdge reading landed, so the open dashboards re-pull
+ * the status rows now instead of at the end of the content TTL. The live
+ * tiles and charts need none of this: they follow the published states.
+ */
+function nudgeWidgets(snapshot) {
+  if (!snapshot || snapshot.fetchedAt === lastNudgedSnapshot) {
+    return;
+  }
+  lastNudgedSnapshot = snapshot.fetchedAt;
+  for (const key of Object.values(WIDGET)) {
+    try {
+      gladys.requestWidgetRefresh(key);
+    } catch (err) {
+      logger.debug(`Widget nudge skipped for ${key}: ${err.message}`);
+    }
+  }
 }
 
 // --- Configuration updated by the user ---------------------------------------
@@ -248,6 +328,7 @@ async function refreshAll() {
     lastPublishedSnapshot.set(blueprint.deviceExternalId(gladys, context), snapshot.fetchedAt);
     published += states?.length ?? 0;
   }
+  nudgeWidgets(snapshot);
   await reportHealth(null);
   return published;
 }
@@ -280,43 +361,6 @@ async function setStatus(connected, message) {
     await gladys.setConnectionStatus(connected, message);
   } catch (err) {
     logger.error('Could not publish the connection status', err);
-  }
-}
-
-/** Turn a failure into something the user can act on. */
-function describeError(err) {
-  // A GladysApiError means the HOST refused us — a rejected discovery payload,
-  // an expired integration token — not SolarEdge. Blaming SolarEdge here would
-  // send the user hunting through the monitoring portal for nothing.
-  if (err instanceof GladysApiError) {
-    return {
-      en: `Gladys refused the request (${err.code} / HTTP ${err.status}): ${err.message}`,
-      fr: `Gladys a refusé la requête (${err.code} / HTTP ${err.status}) : ${err.message}`,
-    };
-  }
-
-  switch (err?.code) {
-    case ERROR_CODES.UNAUTHORIZED:
-      return {
-        en: 'SolarEdge refused the API key: check it in the monitoring portal (Admin > Site Access).',
-        fr: "SolarEdge a refusé la clé d'API : vérifiez-la dans le portail de supervision (Admin > Accès au site).",
-      };
-    case ERROR_CODES.NOT_FOUND:
-      return {
-        en: `SolarEdge could not resolve the site: ${err.message}`,
-        fr: `Site SolarEdge introuvable : ${err.message}`,
-      };
-    case ERROR_CODES.QUOTA_EXCEEDED:
-    case ERROR_CODES.RATE_LIMITED:
-      return {
-        en: 'SolarEdge daily request quota reached: increase the refresh interval, retry tomorrow.',
-        fr: "Quota de requêtes SolarEdge atteint : augmentez l'intervalle de rafraîchissement et réessayez demain.",
-      };
-    default:
-      return {
-        en: `Could not reach SolarEdge: ${err?.message ?? 'unknown error'}`,
-        fr: `Impossible de joindre SolarEdge : ${err?.message ?? 'erreur inconnue'}`,
-      };
   }
 }
 

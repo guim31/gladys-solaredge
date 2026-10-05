@@ -18,13 +18,14 @@ import {
   DEVICE_FEATURE_TYPES,
   DEVICE_FEATURE_UNITS,
 } from '@gladysassistant/integration-sdk';
-import { GLADYS_POLL_FREQUENCY, publishStates } from './helpers.js';
+import { GLADYS_POLL_FREQUENCY, mapFeatureIds, publishStates } from './helpers.js';
 
 const DEVICE_TYPE = 'solaredge-grid';
 
 const logger = createLogger({ name: 'grid' });
 
-const FEATURE = {
+/** Feature keys of this device (the suffix of each feature external_id). */
+export const FEATURE = {
   POWER: 'power',
   IMPORTED_TODAY: 'imported-today',
   EXPORTED_TODAY: 'exported-today',
@@ -39,6 +40,10 @@ export const grid = {
 
   deviceExternalId(gladys, { siteId }) {
     return gladys.externalIds(DEVICE_TYPE, siteId).device;
+  },
+
+  featureIds(gladys, { siteId }) {
+    return mapFeatureIds(FEATURE, gladys.externalIds(DEVICE_TYPE, siteId));
   },
 
   buildDevice(gladys, { siteId }) {

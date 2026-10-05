@@ -4,8 +4,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIONS } from '../src/actions.js';
+import { GladysApiError } from '@gladysassistant/integration-sdk';
+import { ACTIONS, WIDGET_ACTIONS, describeError } from '../src/actions.js';
 import { normalizeConfig } from '../src/config.js';
+import { ERROR_CODES, SolarEdgeError } from '../src/solaredge/client.js';
 import { SolarEdgeService } from '../src/solaredge/service.js';
 import { createFakeGladys } from './helpers/fakeGladys.js';
 import { createFakeClient } from './helpers/solaredgeFixtures.js';
@@ -90,4 +92,50 @@ test('api_usage translates the remaining budget into refresh cycles', async () =
   assert.match(message.fr, /100\/300/);
   // 200 requests left, 2 per cycle without the storage telemetry.
   assert.match(message.fr, /100 cycle/);
+});
+
+// --- Widget buttons ----------------------------------------------------------
+
+test('the widget Refresh button answers like the "Refresh now" action', async () => {
+  const message = await WIDGET_ACTIONS.refresh(createFakeGladys(), createDeps());
+  assert.match(message.fr, /12 état/);
+  assert.match(message.en, /12 state/);
+});
+
+test('a refresh the budget refuses becomes a toast, not a failed action', async () => {
+  const deps = createDeps({
+    refreshAll: async () => {
+      throw new SolarEdgeError('Daily budget spent', { code: ERROR_CODES.QUOTA_EXCEEDED });
+    },
+  });
+  const message = await WIDGET_ACTIONS.refresh(createFakeGladys(), deps);
+  assert.match(message.fr, /Quota de requêtes SolarEdge atteint/);
+  assert.match(message.en, /quota reached/);
+  for (const text of Object.values(message)) {
+    assert.ok(text.length <= 200, 'a toast is 200 characters at most per language');
+  }
+});
+
+test('describeError blames the right side', () => {
+  assert.match(
+    describeError(new GladysApiError(422, 'BAD_REQUEST', 'min is required')).fr,
+    /Gladys a refusé/,
+  );
+  assert.match(
+    describeError(new SolarEdgeError('x', { code: ERROR_CODES.UNAUTHORIZED })).fr,
+    /clé d'API/,
+  );
+  assert.match(
+    describeError(new SolarEdgeError('site 1', { code: ERROR_CODES.NOT_FOUND })).fr,
+    /introuvable/,
+  );
+  assert.match(
+    describeError(new SolarEdgeError('x', { code: ERROR_CODES.RATE_LIMITED })).fr,
+    /Quota/,
+  );
+  assert.match(
+    describeError(new Error('ECONNRESET')).fr,
+    /Impossible de joindre SolarEdge : ECONNRESET/,
+  );
+  assert.match(describeError(undefined).en, /unknown error/);
 });
