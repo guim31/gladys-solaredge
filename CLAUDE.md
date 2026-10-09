@@ -6,17 +6,22 @@ Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâti
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
 
-## État au 09/10/2026 (1.2.0)
+## État au 09/10/2026 (1.3.0)
 
-Version **1.2.0 publiée** le 09/10/2026 (PR #3, Release `minor`, notes dans
-`.github/release-notes/v1.2.0.md`). La 1.1.0 avait apporté les widgets (SDK ^0.14.0,
-`gladys_version` `>=5.1.0`).
+Version **1.3.0 publiée** le 09/10/2026 (PR #5, Release `minor`, notes dans
+`.github/release-notes/v1.3.0.md`) : ajoute l'**Index soutiré** sur l'appareil Réseau, qui
+réalimente le module Énergie de Gladys pour les sites avec compteur (voir « Choix de conception
+(mesures) »). **Jamais testé en réel** : Guilhem n'a pas de compteur, il faut un testeur du forum
+qui en a un. À vérifier chez lui : l'index ne descend jamais, aucun pic à minuit, les mesures
+« (consumption) »/« (cost) » apparaissent après « Mettre à jour », la requête `timeUnit=YEAR` sur
+plusieurs années passe (sinon le repli année par année doit apparaître dans les logs).
 
-**Premier test réel le 09/10/2026**, sur la 1.1.0, chez Guilhem : Gladys 5.1.4, un onduleur SE3000H
-**seul** (ni compteur, ni batterie, ni tarif). Vérifié en réel : les trois widgets s'affichent,
-l'appareil Production et ses états arrivent. Quatre défauts trouvés, corrigés en 1.2.0, **pas
-encore revérifiés en réel** : Guilhem doit mettre à jour, cliquer « Mettre à jour » dans Découverte
-et supprimer l'appareil Réseau (section « Mise à jour depuis la version 1.1.0 » de `docs/fr.md`) :
+Version 1.2.0 (PR #3, notes `v1.2.0.md`) : corrections du **premier test réel du 09/10/2026**, sur
+la 1.1.0, chez Guilhem : Gladys 5.1.4, un onduleur SE3000H **seul** (ni compteur, ni batterie, ni
+tarif). Vérifié en réel : les trois widgets s'affichent, l'appareil Production et ses états
+arrivent. Quatre défauts trouvés, corrigés en 1.2.0, **pas encore revérifiés en réel** : Guilhem
+doit mettre à jour, cliquer « Mettre à jour » dans Découverte et supprimer l'appareil Réseau
+(section « Mise à jour depuis la version 1.1.0 » de `docs/fr.md`) :
 
 1. des mesures `energy-sensor/energy` transformées par le cœur en fausse consommation (voir les
    pièges « Énergie » plus bas) ;
