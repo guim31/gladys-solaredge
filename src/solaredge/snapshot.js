@@ -107,9 +107,14 @@ export function parsePowerFlow(flow) {
   const pv = flow.PV ? toWatts(flow.PV.currentPower, unit) : null;
   const load = flow.LOAD ? toWatts(flow.LOAD.currentPower, unit) : null;
 
+  // A node without `currentPower` is NOT a node at 0 W. A site with no meter
+  // still answers `GRID: { status: 'Inactive' }` and `LOAD: { status:
+  // 'Inactive' }` (seen on a real SE3000H alone): the API lists the slots of
+  // its diagram, not what is measured. Only a number makes a reading.
   let grid = null;
-  if (flow.GRID) {
-    const magnitude = Math.abs(toWatts(flow.GRID.currentPower, unit) ?? 0);
+  const gridWatts = flow.GRID ? toWatts(flow.GRID.currentPower, unit) : null;
+  if (gridWatts !== null) {
+    const magnitude = Math.abs(gridWatts);
     // Exporting is the only case that flips the sign; when the grid appears on
     // neither side of a connection nothing is flowing, and 0 is the truth.
     grid = flowsTo('grid') && !flowsFrom('grid') ? -magnitude : magnitude;
@@ -118,16 +123,21 @@ export function parsePowerFlow(flow) {
   let battery = null;
   if (flow.STORAGE) {
     const state = parseBatteryState(flow.STORAGE.status, { flowsFrom, flowsTo });
-    const magnitude = Math.abs(toWatts(flow.STORAGE.currentPower, unit) ?? 0);
+    const watts = toWatts(flow.STORAGE.currentPower, unit);
+    const magnitude = watts === null ? null : Math.abs(watts);
+    let power = magnitude;
+    if (state === BATTERY_STATES.IDLE || state === BATTERY_STATES.DISABLED) {
+      // The status itself says nothing flows: 0 is a reading here.
+      power = 0;
+    } else if (magnitude !== null && state === BATTERY_STATES.DISCHARGING) {
+      power = -magnitude;
+    }
     battery = {
-      power: state === BATTERY_STATES.DISCHARGING ? -magnitude : magnitude,
+      power,
       level: round(flow.STORAGE.chargeLevel, 0),
       state,
       critical: flow.STORAGE.critical === true,
     };
-    if (state === BATTERY_STATES.IDLE || state === BATTERY_STATES.DISABLED) {
-      battery.power = 0;
-    }
   }
 
   return { pv: round(pv, 0), load: round(load, 0), grid: round(grid, 0), battery };

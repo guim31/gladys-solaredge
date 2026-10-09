@@ -103,6 +103,7 @@ test('capabilities follow what the installation really reports', async () => {
       energy: { unit: 'Wh', meters: [{ type: 'Production', values: [{ value: 1000 }] }] },
     },
   });
+  // (The real "inverter alone" answers are in inverterOnly.test.js.)
   assert.deepEqual(await bare.service.getCapabilities(), {
     production: true,
     consumption: false,
@@ -112,6 +113,27 @@ test('capabilities follow what the installation really reports', async () => {
     // on this bare site: the capability is about the tariff, not the hardware.
     revenue: true,
   });
+});
+
+test('a re-probe without a reading keeps the hardware already detected', async () => {
+  const client = createFakeClient();
+  let now = new Date('2024-05-18T13:42:00Z');
+  const service = new SolarEdgeService(normalizeConfig({ api_key: 'K' }), {
+    client,
+    now: () => now,
+  });
+  assert.equal((await service.getCapabilities()).grid, true);
+  now = new Date('2024-05-18T14:42:00Z'); // the daily breakdown is due again
+
+  // A scan that lands on a meter between two readings, energyDetails failing.
+  client.getCurrentPowerFlow = async () => ({ unit: 'W', GRID: { status: 'Active' } });
+  client.getEnergyDetails = async () => {
+    throw new Error('timeout');
+  };
+  const again = await service.getCapabilities({ force: true });
+  assert.equal(again.grid, true);
+  assert.equal(again.consumption, true);
+  assert.equal(again.battery, true);
 });
 
 test('a site with meters but no live power flow still gets its devices', async () => {

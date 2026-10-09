@@ -103,3 +103,84 @@ export function createFakeClient(overrides = {}) {
     getStorageData: () => record('storage', overrides.storage ?? STORAGE_DATA),
   };
 }
+
+// -----------------------------------------------------------------------------
+// A REAL site: one SE3000H inverter alone — no meter, no battery, no tariff —
+// on an October evening (the answers of the first real test, 2026-10-09; site
+// id and serial number replaced). What it teaches:
+//   - `currentPowerFlow` still lists GRID and LOAD, with a status and NO
+//     `currentPower`: the slots of the diagram, not measurements;
+//   - `energyDetails` lists every meter, with dates and no `value`, except
+//     Production;
+//   - `overview` reports `lifeTimeData.revenue: 0.0` and no daily revenue: the
+//     owner never entered a feed-in tariff.
+// -----------------------------------------------------------------------------
+
+export const INVERTER_ONLY_SITE_DETAILS = {
+  id: 1000001,
+  name: 'Onduleur seul',
+  peakPower: 3,
+  currency: 'EUR',
+  status: 'Active',
+  location: { country: 'France', timeZone: 'Europe/Paris' },
+};
+
+export const INVERTER_ONLY_POWER_FLOW = {
+  updateRefreshRate: 3,
+  unit: 'kW',
+  connections: [],
+  GRID: { status: 'Inactive' },
+  LOAD: { status: 'Inactive' },
+  PV: { status: 'Idle', currentPower: 0.0 },
+};
+
+export const INVERTER_ONLY_OVERVIEW = {
+  lastUpdateTime: '2026-10-09 19:05:38',
+  lifeTimeData: { energy: 2.6618836e7, revenue: 0.0 },
+  lastYearData: { energy: 3052537.0 },
+  lastMonthData: { energy: 59764.0 },
+  lastDayData: { energy: 9844.0 },
+  currentPower: { power: 0.0 },
+  measuredBy: '',
+};
+
+export const INVERTER_ONLY_ENERGY_DETAILS = {
+  timeUnit: 'DAY',
+  unit: 'Wh',
+  meters: [
+    { type: 'Consumption', values: [{ date: '2026-10-09 00:00:00' }] },
+    { type: 'FeedIn', values: [{ date: '2026-10-09 00:00:00' }] },
+    { type: 'Purchased', values: [{ date: '2026-10-09 00:00:00' }] },
+    { type: 'SelfConsumption', values: [{ date: '2026-10-09 00:00:00' }] },
+    { type: 'Production', values: [{ date: '2026-10-09 00:00:00', value: 9844.0 }] },
+  ],
+};
+
+/** `/site/{id}/inventory` of the same site (not called by the integration). */
+export const INVERTER_ONLY_INVENTORY = {
+  inverters: [
+    {
+      name: 'Inverter 1',
+      manufacturer: 'SolarEdge',
+      communicationMethod: 'ETHERNET',
+      connectedOptimizers: 8,
+      partNumber: 'SE3000H-RW000NNN2',
+      SN: 'XXXXXXXX-XX',
+    },
+  ],
+  batteries: [],
+  gateways: [],
+  sensors: [],
+  meters: [],
+};
+
+/** The client stub of `createFakeClient`, answering as the inverter-only site. */
+export function createInverterOnlyClient() {
+  return createFakeClient({
+    details: INVERTER_ONLY_SITE_DETAILS,
+    flow: INVERTER_ONLY_POWER_FLOW,
+    overview: INVERTER_ONLY_OVERVIEW,
+    energy: INVERTER_ONLY_ENERGY_DETAILS,
+    sites: [{ id: INVERTER_ONLY_SITE_DETAILS.id, name: INVERTER_ONLY_SITE_DETAILS.name }],
+  });
+}
