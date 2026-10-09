@@ -21,6 +21,7 @@ import { connectionFingerprint, isConfigured, normalizeConfig } from './src/conf
 import { SolarEdgeService } from './src/solaredge/service.js';
 import { ERROR_CODES, SolarEdgeError } from './src/solaredge/client.js';
 import { ACTIONS, NOT_CONFIGURED_MESSAGE, WIDGET_ACTIONS, describeError } from './src/actions.js';
+import { SnapshotPublisher } from './src/publisher.js';
 import {
   WIDGET,
   buildBatteryContent,
@@ -30,7 +31,6 @@ import {
   widgetFeatures,
 } from './src/widgets.js';
 import {
-  availableBlueprints,
   buildDiscoveredDevices,
   buildTransportEntries,
   findBlueprintByDevice,
@@ -49,9 +49,8 @@ let retryTimer = null;
 let retryDelay = 0;
 // Last transport published, to avoid re-publishing an unchanged badge.
 let lastTransportKey = null;
-// Per-device timestamp of the last snapshot actually published, so a Gladys
-// tick that brings no new SolarEdge reading publishes nothing.
-const lastPublishedSnapshot = new Map();
+// Which snapshot each device already published on a tick (src/publisher.js).
+const publisher = new SnapshotPublisher(gladys);
 // Timestamp of the last snapshot the widgets were nudged for: one nudge per
 // SolarEdge reading, not one per device publishing it.
 let lastNudgedSnapshot = null;
@@ -100,21 +99,23 @@ gladys.onPoll(async (device) => {
     logger.warn(`onPoll ignored: unknown device ${device.external_id}`);
     return;
   }
+  if (!blueprint.isAvailable(context.capabilities)) {
+    // Created in Gladys by an earlier version, no longer published (a "Grid"
+    // device on a site without a meter): nothing to say about it.
+    logger.debug(`onPoll ignored: ${device.external_id} is not part of this installation`);
+    return;
+  }
 
   try {
     const snapshot = await service.getSnapshot();
 
-    // Gladys ticks every minute (the slowest cadence its poll_frequency enum
-    // allows), but SolarEdge is only read every "Refresh interval" seconds.
-    // Most ticks therefore hand back the very same snapshot: re-publishing it
-    // would write 1440 identical points per feature per day into the history
-    // for nothing — and the host API rate-limits states at 300/minute.
-    if (lastPublishedSnapshot.get(device.external_id) === snapshot.fetchedAt) {
+    // Most ticks hand back the snapshot this device already published: the
+    // publisher skips them (src/publisher.js explains why, and why a forced
+    // refresh does not count as published).
+    if (!(await publisher.tick(blueprint, context, device, snapshot))) {
       logger.debug(`Tick ignored for ${device.external_id}: snapshot unchanged`);
       return;
     }
-    await blueprint.onPoll(gladys, context, snapshot);
-    lastPublishedSnapshot.set(device.external_id, snapshot.fetchedAt);
     nudgeWidgets(snapshot);
     await reportHealth(null);
   } catch (err) {
@@ -322,14 +323,9 @@ async function refreshAll() {
   }
 
   const snapshot = await service.getSnapshot({ force: true });
-  let published = 0;
-  for (const blueprint of availableBlueprints(context.capabilities)) {
-    const states = await blueprint.onPoll(gladys, context, snapshot);
-    // Mark it published, so the next Gladys tick does not immediately repeat
-    // what this forced refresh just wrote.
-    lastPublishedSnapshot.set(blueprint.deviceExternalId(gladys, context), snapshot.fetchedAt);
-    published += states?.length ?? 0;
-  }
+  // Not recorded as published: the devices may not be added in Gladys yet,
+  // and the next tick then delivers this reading for real.
+  const published = await publisher.publishAll(context, snapshot);
   nudgeWidgets(snapshot);
   await reportHealth(null);
   return published;
