@@ -19,17 +19,20 @@ The integration detects all of this on its own at startup.
 
 Always created.
 
-| Reading               | Unit  | Description                                    |
-| --------------------- | ----- | ---------------------------------------------- |
-| Produced power        | W     | Instantaneous output of the panels             |
-| Production today      | kWh   | Energy produced since midnight                 |
-| Production this month | kWh   | Energy produced since the start of the month   |
-| Production this year  | kWh   | Energy produced since the start of the year    |
-| Total production      | kWh   | Lifetime counter since commissioning           |
-| Revenue today\*       | € / $ | Revenue computed by SolarEdge from your tariff |
+| Reading          | Unit  | Description                                    |
+| ---------------- | ----- | ---------------------------------------------- |
+| Produced power   | W     | Instantaneous output of the panels             |
+| Production today | kWh   | Energy produced since midnight                 |
+| Total production | kWh   | Lifetime counter since commissioning           |
+| Revenue today\*  | € / $ | Revenue computed by SolarEdge from your tariff |
 
 \* Only when you have entered a feed-in tariff in the SolarEdge portal (see
 "Revenue today" below). Without a tariff the feature is not created at all.
+
+Production this month and this year are not features: the **Solar
+production** widget shows them. Gladys has no type for an energy that resets
+every month or every year, and the closest one is counted by Gladys as house
+consumption (see "Upgrading from version 1.1.0").
 
 ### SolarEdge — Consumption
 
@@ -54,6 +57,10 @@ Created when your installation measures the grid exchanges.
 The sign of the grid power is what makes scenes interesting: "when grid power
 drops below −1000 W, start the water heater" means exactly "use the surplus
 instead of selling it".
+
+The "today" energies (consumption, self-consumption, imported, exported) are
+totals since midnight, published with Gladys's _index today_ type: the Gladys
+energy module does not count them as consumption to bill.
 
 ### SolarEdge — Battery
 
@@ -95,7 +102,8 @@ feature Gladys does not have stays empty.
   budget, and once the day's budget is spent the widget says so instead of
   calling the API.
 - **Solar production** — production today, this month, this year and since
-  commissioning as tiles, the PV power curve over the chosen **period** (24
+  commissioning as tiles (no decimals from 1000 kWh on; month, year and total
+  come from the last SolarEdge reading), the PV power curve over the chosen **period** (24
   hours, a week or a month), today's revenue when it exists and the time of
   the last reading.
 - **Battery** — the charge level gauge, the battery power, its state
@@ -172,8 +180,9 @@ rate you enter yourself in the monitoring portal, under **Admin → Revenue**
 (you need _account manager_ rights on the site). Two models are offered
 there: a flat rate per kWh, or a time-of-use rate.
 
-**Until that tariff is set, the API returns no revenue at all** and the
-integration simply does not create the feature. That is deliberate: a feature
+**Until that tariff is set, the API returns no revenue for the day** (only a
+lifetime revenue of 0) and the integration simply does not create the
+feature. That is deliberate: a feature
 that could never hold a value looks like a broken sensor, when it is really an
 unconfigured option. If you set the tariff later, run a scan from the
 **Discovery** tab and the feature appears.
@@ -199,6 +208,40 @@ Our advice: only set the tariff if you know exactly what you want out of it,
 and remember the figure covers total production. A missing feature is more
 honest than a wrong number.
 
+## Upgrading from version 1.1.0
+
+Version 1.1.0 published production this month, production this year, energy
+imported and exported today (and the battery's stored energy) with a type
+Gladys 5.1 treats as a **consumption meter**. Gladys then added two features
+of its own to each, "… (consumption)" and "… (cost)": your production and the
+surplus you sell were counted as house consumption, and billed. On a site
+without a meter, 1.1.0 also created a **Grid** device stuck at 0 W and a
+**Revenue today** feature that never held a value.
+
+Once the integration is updated:
+
+1. Open the integration's **Discovery** tab. Every affected device shows
+   **Update**: click it, device by device. Gladys then applies the new list of
+   features:
+   - the features the integration no longer publishes (production this month,
+     this year, revenue today without a tariff) are **deleted, with their
+     history**;
+   - the "(consumption)" and "(cost)" features Gladys had added are
+     **deleted, with their history**: this is what removes the false
+     consumption from your energy dashboards;
+   - the features that only change type (today's energies, stored energy) stay
+     the same features and **keep their history**.
+2. On a site **without a consumption meter**, the **SolarEdge — Grid** device
+   is no longer offered at all (and the integration sends it nothing). Delete
+   it from the integration's **Devices** tab: its "(consumption)" and "(cost)"
+   features go with it.
+3. If a widget or a scene used a deleted feature, edit it: the SolarEdge
+   widgets adapt on their own.
+
+**Until you click "Update", Gladys keeps the old types in its database** and
+keeps computing a false consumption from the energy imported and exported
+today, which the integration still publishes.
+
 ## Available actions
 
 - **Test the connection** — checks the key, resolves the site and lists the
@@ -221,7 +264,9 @@ installation: press **List my sites** and copy the id you want into the
 **Site ID** setting.
 
 **The Consumption and Grid devices do not show up** — your installation has no
-consumption meter. This is a hardware option (a Modbus meter) fitted by the
+consumption meter. SolarEdge still lists empty "Grid" and "Consumption" slots
+in its answers: the integration only creates a device for a value that is
+really measured. This is a hardware option (a Modbus meter) fitted by the
 installer; without it, SolarEdge only knows about production.
 
 **One reading stays empty while the others fill in** — SolarEdge does not

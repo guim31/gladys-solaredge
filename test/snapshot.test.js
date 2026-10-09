@@ -110,6 +110,25 @@ test('parsePowerFlow omits the nodes the installation does not have', () => {
   assert.equal(flow.battery, null);
 });
 
+test('parsePowerFlow: a node without currentPower is not a reading of 0 W', () => {
+  // A real SE3000H without a meter answers the GRID and LOAD slots this way.
+  const flow = parsePowerFlow({
+    unit: 'kW',
+    connections: [],
+    GRID: { status: 'Inactive' },
+    LOAD: { status: 'Inactive' },
+    PV: { status: 'Idle', currentPower: 0.0 },
+  });
+  assert.equal(flow.grid, null);
+  assert.equal(flow.load, null);
+  assert.equal(flow.pv, 0);
+
+  // A charging battery with no power reported: the state is known, the power not.
+  const battery = parsePowerFlow({ STORAGE: { status: 'Charging', chargeLevel: 40 } }).battery;
+  assert.equal(battery.power, null);
+  assert.equal(battery.level, 40);
+});
+
 test('parseOverview converts every counter to kWh', () => {
   const overview = parseOverview(OVERVIEW);
   assert.equal(overview.currentPower, 4200);

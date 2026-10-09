@@ -18,7 +18,7 @@ import {
   DEVICE_FEATURE_TYPES,
   DEVICE_FEATURE_UNITS,
 } from '@gladysassistant/integration-sdk';
-import { GLADYS_POLL_FREQUENCY, mapFeatureIds, publishStates } from './helpers.js';
+import { DAILY_ENERGY, GLADYS_POLL_FREQUENCY, mapFeatureIds, publishStates } from './helpers.js';
 
 const DEVICE_TYPE = 'solaredge-grid';
 
@@ -70,8 +70,7 @@ export const grid = {
         {
           name: 'Énergie soutirée du jour',
           external_id: ids.feature(FEATURE.IMPORTED_TODAY),
-          category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
-          type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
+          ...DAILY_ENERGY,
           unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
           min: 0,
           max: 1000,
@@ -82,8 +81,7 @@ export const grid = {
         {
           name: 'Énergie injectée du jour',
           external_id: ids.feature(FEATURE.EXPORTED_TODAY),
-          category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
-          type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
+          ...DAILY_ENERGY,
           unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
           min: 0,
           max: 1000,

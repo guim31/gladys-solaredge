@@ -18,10 +18,26 @@ without a consumption meter simply gets the production device.
 
 | Device                         | Features                                                                                                                                                         | Created when      |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| SolarEdge — Production solaire | PV power (W), production today / month / year / lifetime (kWh), today's revenue                                                                                  | always            |
+| SolarEdge — Production solaire | PV power (W), production today, lifetime production (kWh), today's revenue                                                                                       | always            |
 | SolarEdge — Consommation       | Load power (W), consumption today (kWh), self-consumption today (kWh)                                                                                            | consumption meter |
 | SolarEdge — Réseau             | Grid power (W, **signed**: + imported / − exported), imported today (kWh), exported today (kWh)                                                                  | grid metering     |
 | SolarEdge — Batterie           | Charge level (%), battery power (W, **signed**: + charging / − discharging), state (text), low flag, and — optionally — stored energy (kWh) and temperature (°C) | battery installed |
+
+Feature types are chosen for what the Gladys core **does** with them, not only
+for the label. `energy-sensor/energy` and `energy-sensor/index` are
+consumption indexes for the core's energy module (it derives "(consumption)"
+and "(cost)" features from them and bills their deltas), and
+`energy-sensor/daily-consumption` is one state per day, summed by the weekly
+digest. So: lifetime production is `energy-production-sensor/index`, the
+"today" energies other than production are `energy-sensor/index-today`, the
+battery's stored energy is `battery-storage/battery-energy-remaining`, and the
+month and year totals are no features at all (the production widget shows
+them). `test/discoveryContract.test.js` holds that rule.
+
+Capabilities need a **reading**, not a key in the payload: a SolarEdge site
+without a meter still answers `GRID: { status: 'Inactive' }` and lists its
+meters in `energyDetails` with no value, and a site without a tariff answers a
+lifetime revenue of `0.0`. `test/inverterOnly.test.js` replays such a site.
 
 Signed powers are the point: a single feature per flow, so a Gladys scene can
 say "when grid power < −1000 W, start the water heater" — i.e. "use the
@@ -35,7 +51,7 @@ built by pure functions in `src/widgets.js`:
 | Widget      | Key           | Shows                                                                                                                                                                                 | Settings                                        |
 | ----------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | Energy flow | `energy_flow` | Live PV / home / grid / battery power tiles, the power chart, today's balance (production, consumption, self-consumption, imported, exported, revenue, battery), a **Refresh** button | Chart period: last 24 hours (default) or a week |
-| Production  | `production`  | Today / month / year / lifetime tiles, the PV power area chart, today's revenue and the time of the last reading                                                                      | Chart period: 24 hours, a week or a month       |
+| Production  | `production`  | Today (live) / month / year / lifetime (last reading, no decimals from 1000 kWh) tiles, the PV power area chart, today's revenue and the time of the last reading                     | Chart period: 24 hours, a week or a month       |
 | Battery     | `battery`     | Charge gauge, battery power, state, stored energy and temperature (with the detailed telemetry), a red "Battery low" row                                                              | —                                               |
 
 Two rules keep them cheap:
@@ -90,6 +106,7 @@ integration uses ~240 requests/day.
 │  │  ├─ battery.js
 │  │  └─ helpers.js                  #   state batches that skip missing readings
 │  ├─ widgets.js                     # dashboard widget contents (pure builders)
+│  ├─ publisher.js                   # which snapshot a Gladys tick publishes
 │  ├─ actions.js                     # Configuration + widget buttons, error wording
 │  └─ config.js                      # config defaults + normalization
 ├─ docs/{en,fr}.md                   # user documentation, re-hosted by Gladys

@@ -127,9 +127,15 @@ export class SolarEdgeService {
 
   /**
    * What this installation can actually feed. Derived from a real snapshot:
-   * `currentPowerFlow` only exposes LOAD/GRID/STORAGE when the matching
-   * hardware (consumption meter, battery) is installed, and `energyDetails`
-   * confirms the meters for sites whose flow endpoint stays empty.
+   * a NUMBER in `currentPowerFlow` (LOAD/GRID power, a STORAGE node), or a
+   * real reading in `energyDetails` for sites whose flow endpoint stays empty.
+   *
+   * Presence alone proves nothing. A site with an inverter and no meter still
+   * answers `GRID: { status: 'Inactive' }` in the flow and lists the
+   * Consumption/FeedIn/Purchased meters in `energyDetails` with dates and no
+   * `value` (a real SE3000H, 2026-10-09): testing for the node created a
+   * "Grid" device stuck at 0 W. `parsePowerFlow` and `parseEnergyDetails`
+   * already turn those into `null`, so a `null` here means "not measured".
    */
   async getCapabilities({ force = false } = {}) {
     if (this.capabilities && !force) {
@@ -140,26 +146,31 @@ export class SolarEdgeService {
     const energy = snapshot.energy;
     const overview = snapshot.overview;
 
+    // Hardware does not leave between two probes of the same process: a
+    // re-probe (a scan) that lands on a meter between two readings, with
+    // `energyDetails` failing too, must not take a device away.
+    const seen = this.capabilities ?? {};
     this.capabilities = {
       // A SolarEdge site always produces: the production device is the floor.
       production: true,
-      consumption:
-        Boolean(flow?.load !== null && flow?.load !== undefined) || hasMeter(energy, 'consumption'),
+      consumption: seen.consumption || hasValue(flow?.load) || hasMeter(energy, 'consumption'),
       grid:
-        Boolean(flow?.grid !== null && flow?.grid !== undefined) ||
+        seen.grid ||
+        hasValue(flow?.grid) ||
         hasMeter(energy, 'purchased') ||
         hasMeter(energy, 'feedIn'),
-      battery: Boolean(flow?.battery),
+      battery: seen.battery || Boolean(flow?.battery),
       // Revenue is not hardware: SolarEdge computes it as "feed-in tariff ×
       // energy produced", and only when the owner has entered that tariff in
-      // the monitoring portal (Admin > Revenue). Without it the API returns no
-      // revenue at all, and a feature that can never hold a value is worse
-      // than no feature — it reads as a broken sensor forever.
+      // the monitoring portal (Admin > Revenue). A feature that can never hold
+      // a value is worse than no feature — it reads as a broken sensor forever.
       //
-      // The lifetime total is the reliable signal: today's revenue is
-      // legitimately 0 (not absent) just after midnight on a site that HAS a
-      // tariff, so testing it alone would flip the capability with the clock.
-      revenue: hasValue(overview?.revenueLifetime) || hasValue(overview?.revenueToday),
+      // Without a tariff the API still answers `lifeTimeData.revenue: 0.0` and
+      // no `lastDayData.revenue` at all (same real site): a lifetime 0 is the
+      // absence of a tariff, not a revenue. So: today's revenue when SolarEdge
+      // gives one (0 included — just after midnight on a site WITH a tariff),
+      // or a lifetime total that actually grew.
+      revenue: hasValue(overview?.revenueToday) || overview?.revenueLifetime > 0,
     };
     logger.info(`Capabilities detected: ${JSON.stringify(this.capabilities)}`);
     return this.capabilities;
