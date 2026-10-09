@@ -29,6 +29,7 @@ export const FEATURE = {
   POWER: 'power',
   IMPORTED_TODAY: 'imported-today',
   EXPORTED_TODAY: 'exported-today',
+  IMPORTED_INDEX: 'imported-index',
 };
 
 export const grid = {
@@ -46,9 +47,9 @@ export const grid = {
     return mapFeatureIds(FEATURE, gladys.externalIds(DEVICE_TYPE, siteId));
   },
 
-  buildDevice(gladys, { siteId }) {
+  buildDevice(gladys, { siteId, capabilities }) {
     const ids = gladys.externalIds(DEVICE_TYPE, siteId);
-    return {
+    const device = {
       name: 'SolarEdge — Réseau',
       external_id: ids.device,
       should_poll: true,
@@ -91,17 +92,44 @@ export const grid = {
         },
       ],
     };
+
+    // The ONE consumption index of the integration: what the grid sold the
+    // house since commissioning (see SolarEdgeService#gridImportIndex). Its
+    // type is what makes Gladys derive "(consumption)" and "(cost)" from it —
+    // the energy module's 30-minute consumption and cost, against the user's
+    // contract. Grid import is what the supplier bills; the house consumption
+    // would bill the self-consumed solar too.
+    if (capabilities?.gridImport) {
+      device.features.push({
+        name: 'Index soutiré (depuis la mise en service)',
+        external_id: ids.feature(FEATURE.IMPORTED_INDEX),
+        category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
+        type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.INDEX,
+        unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
+        min: 0,
+        max: 100_000_000,
+        read_only: true,
+        has_feedback: false,
+        keep_history: true,
+      });
+    }
+    return device;
   },
 
   async onPoll(gladys, context, snapshot) {
     const ids = gladys.externalIds(DEVICE_TYPE, context.siteId);
     const { flow, energy } = snapshot;
 
-    const states = await publishStates(gladys, [
+    const entries = [
       [ids.feature(FEATURE.POWER), flow?.grid],
       [ids.feature(FEATURE.IMPORTED_TODAY), energy?.purchased],
       [ids.feature(FEATURE.EXPORTED_TODAY), energy?.feedIn],
-    ]);
+    ];
+    // Guarded by the capability: a state for an undeclared feature is refused.
+    if (context.capabilities?.gridImport) {
+      entries.push([ids.feature(FEATURE.IMPORTED_INDEX), snapshot.gridImportIndex]);
+    }
+    const states = await publishStates(gladys, entries);
 
     logger.info(
       `Grid: ${flow?.grid ?? '?'} W, +${energy?.purchased ?? '?'} / -${energy?.feedIn ?? '?'} kWh today`,

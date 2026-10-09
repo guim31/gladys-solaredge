@@ -57,6 +57,10 @@ Créé si votre installation mesure les échanges avec le réseau.
 | Puissance réseau         | W     | **Positive** si vous soutirez, **négative** si vous injectez |
 | Énergie soutirée du jour | kWh   | Énergie achetée au réseau depuis minuit                      |
 | Énergie injectée du jour | kWh   | Surplus revendu depuis minuit                                |
+| Index soutiré\*          | kWh   | Énergie achetée au réseau depuis la mise en service          |
+
+\* Si SolarEdge mesure l'énergie soutirée et connaît la date de mise en service
+du site.
 
 Le signe de la puissance réseau est ce qui rend les scènes intéressantes :
 « quand la puissance réseau descend sous −1000 W, allume le chauffe-eau »
@@ -66,6 +70,28 @@ Les énergies « du jour » (consommation, autoconsommation, soutirée, injecté
 sont des totaux depuis minuit, publiés avec le type _index du jour_ de Gladys :
 le module énergie de Gladys ne les compte pas comme une consommation à
 facturer.
+
+### Le module Énergie de Gladys
+
+Le module Énergie de Gladys (consommation et coût par demi-heure, tableau de
+bord énergie, contrat) lit un **index** : un compteur qui ne fait que monter.
+L'**Index soutiré** est cet index. C'est l'énergie que vous achetez au réseau,
+celle que votre fournisseur facture. Gladys lui ajoute « (consumption) » et
+« (cost) » et calcule votre consommation facturée avec le tarif de votre
+contrat. La consommation de la maison ne sert pas d'index : elle inclut le
+solaire autoconsommé, qui ne vous coûte rien.
+
+SolarEdge ne fournit pas de compteur cumulé du soutirage : l'intégration le
+reconstitue (le soutirage jusqu'à la veille, relu une fois par jour, plus le
+soutirage du jour). Il avance donc au rythme du **bilan quotidien** (30 min par
+défaut).
+
+Si vous avez déjà un compteur Linky dans Gladys comme compteur principal, il
+mesure la même énergie : l'Index soutiré se range sous lui par défaut, et vous
+pouvez désactiver son historique si vous ne voulez pas de doublon.
+
+Un site sans compteur SolarEdge (onduleur seul) n'a pas d'Index soutiré :
+SolarEdge ne connaît que sa production.
 
 ### SolarEdge — Batterie
 
@@ -168,7 +194,9 @@ Le budget se lit ainsi :
 - le **bilan quotidien** (consommation, autoconsommation, énergie soutirée et
   injectée) coûte **1 requête** à sa propre cadence, plus lente ;
 - la **télémétrie détaillée de la batterie**, si vous l'activez, coûte
-  **1 requête** de plus à la cadence du bilan quotidien.
+  **1 requête** de plus à la cadence du bilan quotidien ;
+- l'**Index soutiré** coûte **1 requête par jour** (plus une de plus au
+  démarrage de l'intégration, pour les années passées).
 
 Avec les valeurs par défaut (15 min pour les valeurs instantanées, 30 min pour
 le bilan), l'intégration consomme environ **240 requêtes par jour** : elle
@@ -228,6 +256,13 @@ rachat)`, ce que ce champ ne sait pas exprimer.
 Notre recommandation : ne renseignez ce tarif que si vous savez précisément ce
 que vous voulez en faire, et gardez à l'esprit que le chiffre porte sur la
 production totale. Une mesure absente est plus honnête qu'un chiffre faux.
+
+## Mise à jour depuis la version 1.2.0
+
+Sur un site avec compteur, l'appareil **SolarEdge — Réseau** affiche
+**Mettre à jour** dans l'onglet **Découverte** : cliquez-le pour ajouter
+l'**Index soutiré**. Rien n'est supprimé. Sur un site sans compteur, rien ne
+change.
 
 ## Mise à jour depuis la version 1.1.0
 

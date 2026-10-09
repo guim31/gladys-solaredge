@@ -339,3 +339,24 @@ function siteDateParts(date, timeZone) {
   }
   return parts;
 }
+
+/** The site's current day, `YYYY-MM-DD`, in the site's timezone. */
+export function siteDay(date, timeZone) {
+  const parts = siteDateParts(date, timeZone);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/** `YYYY-MM-DD` shifted by `days` calendar days (no timezone involved). */
+export function addDays(day, days) {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, date + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * The commissioning day of the site (`installationDate` of the site details,
+ * `YYYY-MM-DD`, sometimes with a time), or `null` when it is missing or odd.
+ */
+export function installationDay(site) {
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(site?.installationDate ?? ''));
+  return match ? match[1] : null;
+}

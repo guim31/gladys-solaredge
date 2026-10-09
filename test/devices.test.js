@@ -24,6 +24,7 @@ const FULL_CAPABILITIES = {
   consumption: true,
   grid: true,
   battery: true,
+  gridImport: true,
   revenue: true,
 };
 
@@ -288,4 +289,24 @@ test('featureIds names every feature a device can declare, with the discovery id
       assert.ok(id.startsWith(blueprint.deviceExternalId(gladys, context)), 'same device prefix');
     }
   }
+});
+
+test('the grid device publishes the import index only when it declares it', async () => {
+  const snapshot = { ...(await buildSnapshot()), gridImportIndex: 1302.5 };
+  const bp = DEVICE_BLUEPRINTS.find((b) => b.key === 'solaredge-grid');
+
+  const withIndex = createFakeGladys();
+  await bp.onPoll(withIndex, createContext(), snapshot);
+  assert.equal(stateOf(withIndex, 'imported-index'), 1302.5);
+
+  const without = createFakeGladys();
+  const context = createContext({ capabilities: { gridImport: false } });
+  await bp.onPoll(without, context, snapshot);
+  assert.equal(stateOf(without, 'imported-index'), undefined);
+  assert.equal(
+    bp
+      .buildDevice(without, context)
+      .features.some((f) => f.external_id.endsWith(':imported-index')),
+    false,
+  );
 });

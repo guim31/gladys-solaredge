@@ -135,6 +135,7 @@ const ALL_CAPABILITIES = {
   consumption: true,
   grid: true,
   battery: true,
+  gridImport: true,
   revenue: true,
 };
 
@@ -221,25 +222,47 @@ const CORE_CONSUMPTION_TYPES = {
 
 const isOneOf = (table, feature) => (table[feature.category] ?? []).includes(feature.type);
 
-test('no feature is one the core would count as house consumption', () => {
+test('the grid import index is the ONLY feature the core counts as consumption', () => {
   // The bug of the first real test: production of the month and of the year,
   // energy exported and imported today, all `energy-sensor/energy`, turned
   // into "(consumption)" features — solar production billed as consumption.
+  // One consumption index is wanted, and only one: the energy bought from the
+  // grid since commissioning, what the supplier bills.
   const payload = buildPayload({ config: { storage_details: true } });
-  const offenders = payload
+  const counted = payload
     .flatMap((device) => device.features)
     .filter((f) => isOneOf(ENERGY_INDEX_FEATURE_TYPES, f) || isOneOf(CORE_CONSUMPTION_TYPES, f))
-    .map((f) => `${f.name} (${f.category}/${f.type})`);
-  assert.deepEqual(offenders, []);
+    .map((f) => [f.external_id.split(':').slice(-1)[0], `${f.category}/${f.type}`]);
+  assert.deepEqual(counted, [['imported-index', 'energy-sensor/index']]);
+  assert.ok(
+    payload
+      .find((d) => d.name === 'SolarEdge — Réseau')
+      .features.some((f) => f.external_id.endsWith(':imported-index')),
+    'it lives on the grid device',
+  );
 });
 
-test('the only cumulative index is the lifetime production, in the production category', () => {
+test('without a grid import reading, nothing is counted as consumption at all', () => {
+  const payload = buildPayload({
+    config: { storage_details: true },
+    capabilities: { gridImport: false },
+  });
+  const counted = payload
+    .flatMap((device) => device.features)
+    .filter((f) => isOneOf(ENERGY_INDEX_FEATURE_TYPES, f) || isOneOf(CORE_CONSUMPTION_TYPES, f));
+  assert.deepEqual(counted, []);
+});
+
+test('the cumulative indexes: lifetime production, and the grid import', () => {
   const indexes = buildPayload({ config: { storage_details: true } })
     .flatMap((device) => device.features)
     .filter((f) => /index$/.test(f.type) && f.type !== 'index-today');
   assert.deepEqual(
     indexes.map((f) => [f.name, f.category, f.type]),
-    [['Production totale', 'energy-production-sensor', 'index']],
+    [
+      ['Production totale', 'energy-production-sensor', 'index'],
+      ['Index soutiré (depuis la mise en service)', 'energy-sensor', 'index'],
+    ],
   );
 });
 

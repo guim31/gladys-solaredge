@@ -10,17 +10,22 @@
 // same in-flight promise instead of racing.
 //
 // Cost of one cycle: 2 requests (`currentPowerFlow` + `overview`), plus the
-// slower `energyDetails` (and optionally `storageData`) refresh.
+// slower `energyDetails` (and optionally `storageData`) refresh, plus one
+// request a day for the grid import index of a metered site.
 // -----------------------------------------------------------------------------
 
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { SolarEdgeClient, SolarEdgeError, ERROR_CODES } from './client.js';
 import {
   ENERGY_METERS,
+  addDays,
+  installationDay,
   parseEnergyDetails,
   parseOverview,
   parsePowerFlow,
   parseStorageData,
+  round,
+  siteDay,
   siteDayRange,
   siteRecentRange,
 } from './snapshot.js';
@@ -52,6 +57,14 @@ export class SolarEdgeService {
     this.snapshotAt = 0;
     this.energyAt = 0;
     this.storageAt = 0;
+    // Site day the cached `energyDetails` breakdown covers.
+    this.energyDay = null;
+    // Grid import index: purchased energy up to the end of the day before
+    // `day`, the full past years of it, and the highest index published.
+    this.importBase = null; // { day, kwh }
+    this.importPastYears = null; // { year, kwh }
+    this.importIndex = null;
+    this.importFailedDay = null; // a day whose history failed: not retried
     this.inFlight = null;
     this.lastError = null;
   }
@@ -160,6 +173,10 @@ export class SolarEdgeService {
         hasMeter(energy, 'purchased') ||
         hasMeter(energy, 'feedIn'),
       battery: seen.battery || Boolean(flow?.battery),
+      // A cumulative grid import index needs the purchased energy of the day
+      // and the commissioning date to add up the days before it.
+      gridImport:
+        seen.gridImport || (hasMeter(energy, 'purchased') && installationDay(this.site) !== null),
       // Revenue is not hardware: SolarEdge computes it as "feed-in tariff ×
       // energy produced", and only when the owner has entered that tariff in
       // the monitoring portal (Admin > Revenue). A feature that can never hold
@@ -235,8 +252,16 @@ export class SolarEdgeService {
 
     const energy = await this.#refreshEnergyDetails(siteId, timeZone, now);
     const storage = await this.#refreshStorageData(siteId, timeZone, now, flow);
+    const gridImportIndex = await this.#gridImportIndex(siteId, site, energy);
 
-    this.snapshot = { flow, overview, energy, storage, fetchedAt: now.toISOString() };
+    this.snapshot = {
+      flow,
+      overview,
+      energy,
+      storage,
+      gridImportIndex,
+      fetchedAt: now.toISOString(),
+    };
     this.snapshotAt = now.getTime();
     this.lastError = null;
     return this.snapshot;
@@ -261,12 +286,121 @@ export class SolarEdgeService {
         meters: ENERGY_METERS,
       });
       this.energyAt = now.getTime();
+      this.energyDay = siteDay(now, timeZone);
       return parseEnergyDetails(details);
     } catch (err) {
       logWarn('energyDetails', err);
       // Keep the previous breakdown: a missed refresh is better than a hole.
       return this.snapshot?.energy ?? null;
     }
+  }
+
+  /**
+   * The grid import INDEX: every kWh bought from the grid since the site was
+   * commissioned, in kWh, never going down — or `null` when it cannot be
+   * built (no purchased reading, no commissioning date, a failed request).
+   *
+   * Why: the Gladys energy module (30-minute consumption, cost, energy
+   * dashboard) only reads a cumulative consumption index. What a metered
+   * SolarEdge site pays its supplier is the energy PURCHASED from the grid —
+   * not the house consumption, which includes the free self-consumed solar.
+   * SolarEdge has no lifetime purchased counter, so it is rebuilt:
+   *
+   *     index = purchased up to the end of yesterday   (once a day)
+   *           + purchased today                        (the daily breakdown)
+   *
+   * Both halves are tied to the SAME site day (`energyDay`, the day of the
+   * cached breakdown): just after midnight the breakdown still holds
+   * yesterday's total, and adding it to a base that already includes
+   * yesterday would count the day twice — a spike billed as consumption.
+   */
+  async #gridImportIndex(siteId, site, energy) {
+    const purchasedToday = energy?.purchased;
+    const day = this.energyDay;
+    const installed = installationDay(site);
+    if (!hasValue(purchasedToday) || !day || !installed || this.importFailedDay === day) {
+      return null;
+    }
+    let base;
+    try {
+      base = await this.#importBase(siteId, installed, day);
+    } catch (err) {
+      // Not retried before tomorrow: a history SolarEdge keeps refusing would
+      // otherwise spend requests at every refresh, up to the whole budget.
+      this.importFailedDay = day;
+      logWarn('energyDetails (grid import index, retried tomorrow)', err);
+      return null;
+    }
+    // Never backwards: a day SolarEdge revises down by a few Wh must not read
+    // as a meter reset (the core skips negative deltas, then counts the jump
+    // back up as consumption).
+    this.importIndex = Math.max(this.importIndex ?? 0, round(base + purchasedToday, 2));
+    return this.importIndex;
+  }
+
+  /** Purchased energy from commissioning to the end of the day before `day`. */
+  async #importBase(siteId, installed, day) {
+    if (this.importBase?.day === day) {
+      return this.importBase.kwh;
+    }
+    const year = Number(day.slice(0, 4));
+    const yearStart = `${year}-01-01`;
+    const yesterday = addDays(day, -1);
+
+    let kwh = 0;
+    if (installed < yearStart) {
+      kwh += await this.#importPastYears(siteId, installed, year);
+    }
+    // This year, day by day: one bucket per day, nothing ambiguous.
+    const from = installed > yearStart ? installed : yearStart;
+    if (from <= yesterday) {
+      kwh += await this.#purchased(siteId, from, yesterday, 'DAY');
+    }
+    this.importBase = { day, kwh };
+    return kwh;
+  }
+
+  /**
+   * Purchased energy of the full years before `year`, cached for the year.
+   * One YEAR-bucket request; if SolarEdge refuses the period (the API caps
+   * some time units to a period, answering 400/403), one DAY request per year.
+   */
+  async #importPastYears(siteId, installed, year) {
+    if (this.importPastYears?.year === year) {
+      return this.importPastYears.kwh;
+    }
+    const lastDay = `${year - 1}-12-31`;
+    let kwh;
+    try {
+      kwh = await this.#purchased(siteId, installed, lastDay, 'YEAR');
+    } catch (err) {
+      if (err?.status !== 400 && err?.status !== 403) {
+        throw err;
+      }
+      logger.info(
+        `energyDetails refused a multi-year period (${err.message}): one request per year`,
+      );
+      kwh = 0;
+      for (let y = Number(installed.slice(0, 4)); y < year; y += 1) {
+        const start = y === Number(installed.slice(0, 4)) ? installed : `${y}-01-01`;
+        kwh += await this.#purchased(siteId, start, `${y}-12-31`, 'DAY');
+      }
+    }
+    this.importPastYears = { year, kwh };
+    return kwh;
+  }
+
+  /** Purchased kWh over whole site days, 0 when the meter reported nothing. */
+  async #purchased(siteId, fromDay, toDay, timeUnit) {
+    const details = await this.client.getEnergyDetails(siteId, {
+      startTime: `${fromDay} 00:00:00`,
+      endTime: `${toDay} 23:59:59`,
+      timeUnit,
+      meters: ['PURCHASED'],
+    });
+    // A year before the meter was fitted has no value: nothing was measured,
+    // and nothing is owed to the index either.
+    return parseEnergyDetails(details)?.purchased ?? 0;
   }
 
   /** Optional battery telemetry (stored energy, temperature). */
