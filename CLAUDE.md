@@ -6,14 +6,17 @@ Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâti
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
 
-## État au 09/10/2026
+## État au 09/10/2026 (1.2.0)
 
-Version 1.1.0 publiée (widgets, SDK ^0.14.0, `gladys_version` `>=5.1.0`). **Premier test réel le
-09/10/2026** chez Guilhem, Gladys 5.1.4, site réel : un onduleur SE3000H **seul** (ni compteur, ni
-batterie, ni tarif). Vérifié en réel : les trois widgets s'affichent, l'appareil Production et ses
-états arrivent. Quatre défauts trouvés, corrigés par la branche `fix/first-real-test` (non
-revérifiés en réel : à refaire par Guilhem après la Release, en suivant « Mise à jour depuis la
-version 1.1.0 » de `docs/fr.md`) :
+Version **1.2.0 publiée** le 09/10/2026 (PR #3, Release `minor`, notes dans
+`.github/release-notes/v1.2.0.md`). La 1.1.0 avait apporté les widgets (SDK ^0.14.0,
+`gladys_version` `>=5.1.0`).
+
+**Premier test réel le 09/10/2026**, sur la 1.1.0, chez Guilhem : Gladys 5.1.4, un onduleur SE3000H
+**seul** (ni compteur, ni batterie, ni tarif). Vérifié en réel : les trois widgets s'affichent,
+l'appareil Production et ses états arrivent. Quatre défauts trouvés, corrigés en 1.2.0, **pas
+encore revérifiés en réel** : Guilhem doit mettre à jour, cliquer « Mettre à jour » dans Découverte
+et supprimer l'appareil Réseau (section « Mise à jour depuis la version 1.1.0 » de `docs/fr.md`) :
 
 1. des mesures `energy-sensor/energy` transformées par le cœur en fausse consommation (voir les
    pièges « Énergie » plus bas) ;
