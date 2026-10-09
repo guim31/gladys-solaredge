@@ -42,7 +42,14 @@ import {
 } from './helpers/solaredgeFixtures.js';
 
 const gladys = createFakeGladys();
-const FULL = { production: true, consumption: true, grid: true, battery: true, revenue: true };
+const FULL = {
+  production: true,
+  consumption: true,
+  grid: true,
+  battery: true,
+  gridImport: true,
+  revenue: true,
+};
 const PRODUCTION_ONLY = {
   production: true,
   consumption: false,

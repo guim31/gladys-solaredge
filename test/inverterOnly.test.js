@@ -53,6 +53,7 @@ test('inverter alone: only the production device, no grid, no revenue', async ()
     consumption: false,
     grid: false,
     battery: false,
+    gridImport: false,
     revenue: false,
   });
 
