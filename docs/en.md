@@ -53,6 +53,10 @@ Created when your installation measures the grid exchanges.
 | Grid power     | W    | **Positive** when importing, **negative** when exporting |
 | Imported today | kWh  | Energy bought from the grid since midnight               |
 | Exported today | kWh  | Surplus sold since midnight                              |
+| Import index\* | kWh  | Energy bought from the grid since commissioning          |
+
+\* When SolarEdge measures the imported energy and knows the site's
+commissioning date.
 
 The sign of the grid power is what makes scenes interesting: "when grid power
 drops below −1000 W, start the water heater" means exactly "use the surplus
@@ -61,6 +65,27 @@ instead of selling it".
 The "today" energies (consumption, self-consumption, imported, exported) are
 totals since midnight, published with Gladys's _index today_ type: the Gladys
 energy module does not count them as consumption to bill.
+
+### The Gladys energy module
+
+The Gladys energy module (30-minute consumption and cost, energy dashboard,
+contract) reads an **index**: a counter that only goes up. The **Import
+index** is that index. It is the energy you buy from the grid, the one your
+supplier bills. Gladys adds "(consumption)" and "(cost)" to it and computes
+your billed consumption with your contract's rates. The house consumption is
+not used as an index: it includes the self-consumed solar, which costs you
+nothing.
+
+SolarEdge has no lifetime import counter: the integration rebuilds it (the
+import up to yesterday, read once a day, plus today's import). It therefore
+moves at the pace of the **daily breakdown** (30 min by default).
+
+If Gladys already has a Linky meter as its main meter, that meter measures the
+same energy: the Import index sits under it by default, and you can turn its
+history off if you do not want the duplicate.
+
+A site without a SolarEdge meter (inverter alone) has no Import index:
+SolarEdge only knows its production.
 
 ### SolarEdge — Battery
 
@@ -155,7 +180,9 @@ The budget reads as follows:
 - the **daily breakdown** (consumption, self-consumption, imported, exported)
   costs **1 request** on its own, slower cadence;
 - the **detailed battery telemetry**, if you enable it, costs **1 more
-  request** at the daily-breakdown cadence.
+  request** at the daily-breakdown cadence;
+- the **Import index** costs **1 request a day** (plus one more when
+  the integration starts, for the past years).
 
 With the default settings (15 min for live values, 30 min for the breakdown),
 the integration uses about **240 requests per day**: it stays inside the
@@ -207,6 +234,12 @@ express.
 Our advice: only set the tariff if you know exactly what you want out of it,
 and remember the figure covers total production. A missing feature is more
 honest than a wrong number.
+
+## Upgrading from version 1.2.0
+
+On a metered site, the **SolarEdge — Grid** device shows **Update** in the
+**Discovery** tab: click it to add the **Import index**. Nothing is deleted.
+On a site without a meter, nothing changes.
 
 ## Upgrading from version 1.1.0
 

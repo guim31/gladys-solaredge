@@ -20,7 +20,7 @@ without a consumption meter simply gets the production device.
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | SolarEdge — Production solaire | PV power (W), production today, lifetime production (kWh), today's revenue                                                                                       | always            |
 | SolarEdge — Consommation       | Load power (W), consumption today (kWh), self-consumption today (kWh)                                                                                            | consumption meter |
-| SolarEdge — Réseau             | Grid power (W, **signed**: + imported / − exported), imported today (kWh), exported today (kWh)                                                                  | grid metering     |
+| SolarEdge — Réseau             | Grid power (W, **signed**: + imported / − exported), imported today (kWh), exported today (kWh), grid import index (kWh, since commissioning)                    | grid metering     |
 | SolarEdge — Batterie           | Charge level (%), battery power (W, **signed**: + charging / − discharging), state (text), low flag, and — optionally — stored energy (kWh) and temperature (°C) | battery installed |
 
 Feature types are chosen for what the Gladys core **does** with them, not only
@@ -32,7 +32,11 @@ digest. So: lifetime production is `energy-production-sensor/index`, the
 "today" energies other than production are `energy-sensor/index-today`, the
 battery's stored energy is `battery-storage/battery-energy-remaining`, and the
 month and year totals are no features at all (the production widget shows
-them). `test/discoveryContract.test.js` holds that rule.
+them). ONE feature is a consumption index on purpose: the grid import index
+(`energy-sensor/index`), what the supplier bills, rebuilt from `energyDetails`
+(purchased up to yesterday, read once a day, plus today's) because SolarEdge
+has no lifetime import counter. `test/discoveryContract.test.js` holds that
+rule, `test/gridImportIndex.test.js` the midnight and monotonicity traps.
 
 Capabilities need a **reading**, not a key in the payload: a SolarEdge site
 without a meter still answers `GRID: { status: 'Inactive' }` and lists its
@@ -86,7 +90,8 @@ until the next day. Two decisions follow from it:
    day stands.
 
 With the defaults (live values every 15 min, daily breakdown every 30 min) the
-integration uses ~240 requests/day.
+integration uses ~240 requests/day (+1 a day for the grid import index of a
+metered site).
 
 ## Project structure
 

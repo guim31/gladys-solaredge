@@ -32,12 +32,25 @@ Jamais testé en réel : un site avec compteur, avec batterie, avec tarif.
 - **Le type d'une mesure décide de ce que le cœur en fait**, pas seulement du libellé : choisir un
   type, c'est lire qui le consomme dans le cœur (`grep` du type dans `server/`). Règle tenue par
   `test/discoveryContract.test.js` : aucune mesure de `ENERGY_INDEX_FEATURE_TYPES` ni de
-  `daily-consumption`.
+  `daily-consumption`, **sauf l'index de soutirage**.
 - Production totale : `energy-production-sensor/index`. Production du jour :
   `energy-production-sensor/daily-production` (aucun pipeline ne la lit). Autres énergies « du
   jour » (consommation, autoconsommation, soutirée, injectée) : `energy-sensor/index-today`
   (`DAILY_ENERGY` dans `src/devices/helpers.js`), le type du « Energy Today » de Tasmota, qu'aucun
   pipeline ne lit. Énergie stockée : `battery-storage/battery-energy-remaining`.
+- **Index soutiré** (`grid:imported-index`, `energy-sensor/index`, 1.3.0) : la seule mesure que le
+  module Énergie compte comme consommation, voulue. C'est le soutirage (ce que le fournisseur
+  facture), pas la consommation de la maison (qui inclut le solaire autoconsommé, gratuit).
+  SolarEdge n'a pas de compteur cumulé : `SolarEdgeService#gridImportIndex` le reconstitue =
+  soutirage de la mise en service (`installationDate` des détails du site) à la veille + soutirage
+  du jour. La base et le jour sont liés au **même jour du site** (`energyDay`, le jour du bilan en
+  cache) : juste après minuit, le bilan contient encore la veille, et l'ajouter à une base qui
+  l'inclut compterait la journée deux fois. Années passées : une requête `timeUnit=YEAR` (repli
+  année par année en `DAY` si SolarEdge refuse la période en 400/403 ; limites de `energyDetails`
+  non confirmées par la doc trouvée), en cache pour l'année ; année en cours en `DAY`, une fois
+  par jour. L'index ne descend jamais (`Math.max`). Capacité `gridImport` : une lecture
+  `purchased` et une date de mise en service. Jamais testé en réel (pas de compteur chez
+  Guilhem).
 - Production du mois et de l'année : **pas de mesure** (aucun type ne dit « remis à zéro le 1er »).
   Le widget `production` les écrit depuis le snapshot, en tuiles à valeur littérale.
 - Une capacité exige une **lecture**, pas une clé : `GRID`/`LOAD` sans `currentPower`, un compteur
