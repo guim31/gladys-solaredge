@@ -21,18 +21,22 @@ toute seule au démarrage.
 
 Toujours créé.
 
-| Mesure                | Unité | Description                                    |
-| --------------------- | ----- | ---------------------------------------------- |
-| Puissance produite    | W     | Production instantanée des panneaux            |
-| Production du jour    | kWh   | Énergie produite depuis minuit                 |
-| Production du mois    | kWh   | Énergie produite depuis le début du mois       |
-| Production de l'année | kWh   | Énergie produite depuis le début de l'année    |
-| Production totale     | kWh   | Compteur depuis la mise en service             |
-| Revenu du jour\*      | € / $ | Revenu calculé par SolarEdge selon votre tarif |
+| Mesure             | Unité | Description                                    |
+| ------------------ | ----- | ---------------------------------------------- |
+| Puissance produite | W     | Production instantanée des panneaux            |
+| Production du jour | kWh   | Énergie produite depuis minuit                 |
+| Production totale  | kWh   | Compteur depuis la mise en service             |
+| Revenu du jour\*   | € / $ | Revenu calculé par SolarEdge selon votre tarif |
 
 \* Uniquement si vous avez saisi un tarif de rachat dans le portail SolarEdge
 (voir « Le revenu du jour » plus bas). Sans tarif, la mesure n'est pas créée
 du tout.
+
+La production du mois et de l'année ne sont pas des mesures : elles
+s'affichent dans le widget **Production solaire**. Gladys n'a pas de type pour
+une énergie remise à zéro chaque mois ou chaque année, et le type le plus
+proche est compté par Gladys comme une consommation de la maison (voir
+« Mise à jour depuis la version 1.1.0 »).
 
 ### SolarEdge — Consommation
 
@@ -57,6 +61,11 @@ Créé si votre installation mesure les échanges avec le réseau.
 Le signe de la puissance réseau est ce qui rend les scènes intéressantes :
 « quand la puissance réseau descend sous −1000 W, allume le chauffe-eau »
 signifie exactement « utilise le surplus au lieu de le revendre ».
+
+Les énergies « du jour » (consommation, autoconsommation, soutirée, injectée)
+sont des totaux depuis minuit, publiés avec le type _index du jour_ de Gladys :
+le module énergie de Gladys ne les compte pas comme une consommation à
+facturer.
 
 ### SolarEdge — Batterie
 
@@ -99,7 +108,8 @@ tuile liée à une mesure qui n'existe pas dans Gladys reste vide.
   de requêtes, et quand le budget du jour est épuisé le widget le dit au lieu
   d'appeler l'API.
 - **Production solaire** — la production du jour, du mois, de l'année et depuis
-  la mise en service en tuiles, la courbe de puissance des panneaux sur la
+  la mise en service en tuiles (sans décimale à partir de 1000 kWh ; le mois,
+  l'année et le total viennent de la dernière lecture SolarEdge), la courbe de puissance des panneaux sur la
   **période** choisie (24 heures, une semaine ou un mois), le revenu du jour
   s'il existe et l'heure de la dernière lecture.
 - **Batterie** — la jauge du niveau de charge, la puissance de la batterie, son
@@ -187,8 +197,9 @@ Revenue** (accessible avec les droits _account manager_ sur le site). Deux
 modèles y sont proposés : un tarif forfaitaire au kWh, ou un tarif variable
 selon l'heure (_time of use_).
 
-**Tant que vous n'avez pas saisi ce tarif, l'API ne renvoie aucun revenu** et
-l'intégration ne crée tout simplement pas la mesure. C'est volontaire : une
+**Tant que vous n'avez pas saisi ce tarif, l'API ne renvoie aucun revenu du
+jour** (seulement un revenu cumulé de 0) et l'intégration ne crée tout
+simplement pas la mesure. C'est volontaire : une
 mesure qui ne pourrait jamais recevoir de valeur ressemblerait à un capteur en
 panne, alors qu'il s'agit d'une option non configurée. Si vous saisissez le
 tarif plus tard, relancez une recherche depuis l'onglet **Découverte** : la
@@ -218,6 +229,41 @@ Notre recommandation : ne renseignez ce tarif que si vous savez précisément ce
 que vous voulez en faire, et gardez à l'esprit que le chiffre porte sur la
 production totale. Une mesure absente est plus honnête qu'un chiffre faux.
 
+## Mise à jour depuis la version 1.1.0
+
+La version 1.1.0 publiait la production du mois, la production de l'année et
+les énergies soutirée et injectée du jour (et l'énergie stockée de la
+batterie) avec un type que Gladys 5.1 traite comme un **compteur de
+consommation**. Gladys leur ajoutait alors deux mesures à lui, « … (consumption) »
+et « … (cost) » : votre production et votre surplus revendu étaient comptés
+comme de la consommation de la maison, et facturés. Sur un site sans compteur,
+la 1.1.0 créait aussi un appareil **Réseau** toujours à 0 W et une mesure
+**Revenu du jour** toujours vide.
+
+Après la mise à jour de l'intégration :
+
+1. Ouvrez l'onglet **Découverte** de l'intégration. Chaque appareil concerné
+   affiche **Mettre à jour** : cliquez-le, appareil par appareil. Gladys
+   applique alors la nouvelle liste de mesures :
+   - les mesures que l'intégration ne publie plus (production du mois, de
+     l'année, revenu du jour sans tarif) sont **supprimées, avec leur
+     historique** ;
+   - les mesures « (consumption) » et « (cost) » que Gladys avait ajoutées
+     sont **supprimées, avec leur historique** : c'est ce qui retire la fausse
+     consommation de vos tableaux de bord énergie ;
+   - les mesures qui changent seulement de type (énergies du jour, énergie
+     stockée) restent les mêmes et **gardent leur historique**.
+2. Sur un site **sans compteur de consommation**, l'appareil **SolarEdge —
+   Réseau** n'est plus proposé du tout (et l'intégration ne lui envoie plus
+   rien). Supprimez-le depuis l'onglet **Appareils** de l'intégration : ses
+   mesures « (consumption) » et « (cost) » partent avec lui.
+3. Si un widget ou une scène utilisait une mesure supprimée, reprenez-le : les
+   widgets SolarEdge, eux, s'adaptent seuls.
+
+**Tant que vous n'avez pas cliqué « Mettre à jour », Gladys garde les anciens
+types en base** et continue de calculer une fausse consommation à partir des
+énergies soutirée et injectée du jour, que l'intégration publie toujours.
+
 ## Actions disponibles
 
 - **Tester la connexion** — vérifie la clé, résout le site et liste les
@@ -241,7 +287,9 @@ plusieurs installations : appuyez sur **Lister mes sites** et recopiez
 l'identifiant voulu dans le réglage **Identifiant du site**.
 
 **Les appareils Consommation et Réseau n'apparaissent pas** — votre
-installation n'a pas de compteur de consommation. C'est une option matérielle
+installation n'a pas de compteur de consommation. SolarEdge présente pourtant
+des cases « Réseau » et « Consommation » sans valeur dans ses réponses :
+l'intégration ne crée un appareil que pour une valeur réellement mesurée. C'est une option matérielle
 (compteur Modbus) posée par l'installateur ; sans elle, SolarEdge ne connaît
 que la production.
 

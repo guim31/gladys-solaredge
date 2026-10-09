@@ -6,17 +6,47 @@ Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâti
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
 
-## État au 05/10/2026
+## État au 09/10/2026
 
-Version 1.0.4 publiée, indexée dans le store, sans widget (SDK 0.9, Gladys ≥ 4.62).
+Version 1.1.0 publiée (widgets, SDK ^0.14.0, `gladys_version` `>=5.1.0`). **Premier test réel le
+09/10/2026** chez Guilhem, Gladys 5.1.4, site réel : un onduleur SE3000H **seul** (ni compteur, ni
+batterie, ni tarif). Vérifié en réel : les trois widgets s'affichent, l'appareil Production et ses
+états arrivent. Quatre défauts trouvés, corrigés par la branche `fix/first-real-test` (non
+revérifiés en réel : à refaire par Guilhem après la Release, en suivant « Mise à jour depuis la
+version 1.1.0 » de `docs/fr.md`) :
 
-La branche `feat/dashboard-widgets` (PR brouillon « feat: dashboard widgets (Gladys 5.1) ») monte
-le SDK en ^0.14.0, `gladys_version` en `>=5.1.0`, et ajoute trois widgets : `energy_flow`,
-`production`, `battery`. **Rien n'a été vérifié en réel** : ni instance Gladys 5.1, ni compte
-SolarEdge dans la session. À confirmer par Guilhem : le rendu des tuiles liées, l'échelle du
-graphique à trois séries (W signés), le toast du bouton _Actualiser_, et que la mise à jour depuis
-une 1.0.4 (cœur ≥ 5.1) ne casse rien. Une Release `minor` est le geste attendu : le passage à
-`>=5.1.0` coupe les mises à jour des cœurs plus anciens.
+1. des mesures `energy-sensor/energy` transformées par le cœur en fausse consommation (voir les
+   pièges « Énergie » plus bas) ;
+2. un appareil Réseau à 0 W et un « Revenu du jour » vide sur un site sans compteur ni tarif ;
+3. le premier relevé perdu après un « Rafraîchir maintenant » antérieur à l'ajout des appareils ;
+4. « Cette année » tronqué en « 3052.3 … » dans une tuile étroite.
+
+Les réponses réelles de ce site sont la fixture `INVERTER_ONLY_*` (`test/inverterOnly.test.js`).
+Jamais testé en réel : un site avec compteur, avec batterie, avec tarif.
+
+## Choix de conception (mesures)
+
+- **Le type d'une mesure décide de ce que le cœur en fait**, pas seulement du libellé : choisir un
+  type, c'est lire qui le consomme dans le cœur (`grep` du type dans `server/`). Règle tenue par
+  `test/discoveryContract.test.js` : aucune mesure de `ENERGY_INDEX_FEATURE_TYPES` ni de
+  `daily-consumption`.
+- Production totale : `energy-production-sensor/index`. Production du jour :
+  `energy-production-sensor/daily-production` (aucun pipeline ne la lit). Autres énergies « du
+  jour » (consommation, autoconsommation, soutirée, injectée) : `energy-sensor/index-today`
+  (`DAILY_ENERGY` dans `src/devices/helpers.js`), le type du « Energy Today » de Tasmota, qu'aucun
+  pipeline ne lit. Énergie stockée : `battery-storage/battery-energy-remaining`.
+- Production du mois et de l'année : **pas de mesure** (aucun type ne dit « remis à zéro le 1er »).
+  Le widget `production` les écrit depuis le snapshot, en tuiles à valeur littérale.
+- Une capacité exige une **lecture**, pas une clé : `GRID`/`LOAD` sans `currentPower`, un compteur
+  `energyDetails` sans `value`, un `lifeTimeData.revenue` à `0.0` ne prouvent rien (site réel).
+  Le revenu existe si `lastDayData.revenue` est un nombre ou si le revenu cumulé est > 0. Le
+  matériel détecté reste acquis pour la vie du service (un re-sondage tombé entre deux lectures ne
+  retire pas d'appareil).
+- Un rafraîchissement forcé (`refreshAll`, bouton du widget) publie sans marquer le snapshot comme
+  publié (`src/publisher.js`) : Gladys jette les états d'un appareil pas encore ajouté, et le tick
+  suivant doit les republier. Un point en double coûte moins qu'un quart d'heure sans valeur.
+- `onPoll` ignore un appareil dont le blueprint n'est plus disponible (un Réseau créé par la 1.1.0
+  sur un site sans compteur).
 
 ## Choix de conception (widgets)
 
@@ -37,6 +67,11 @@ une 1.0.4 (cœur ≥ 5.1) ne casse rien. Une Release `minor` est le geste attend
   `3,21 €`) : **la sortie d'`Intl` pour le français change entre versions d'ICU** (U+00A0 puis
   U+202F comme séparateur de milliers, espace fine avant le symbole monétaire), ce qui casserait
   les tests entre Node 22 (session) et Node 24 (CI).
+- Les tuiles du mois, de l'année et du total du widget `production` sont **littérales** (chaîne
+  `{ en, fr }` + `unit: 'kWh'`), sans décimale dès 1000 kWh (`energyDigits`). Une tuile liée est
+  rendue par le front en `Math.round(v * 10) / 10` + unité, avec ellipse : « 26618.8 kWh » ne
+  tient pas. Une valeur littérale **numérique** serait reformatée par le front avec séparateur de
+  milliers (`Intl.NumberFormat(language)`) : passer une chaîne.
 - `energy_flow` tient **exactement** dans le budget du cœur (4 tuiles + graphique + status +
   légende + bouton = 8) : ajouter un composant en fait tomber un autre, en ordre de contenu.
 - L'heure « Actualisé à » est celle du **fuseau du site** (`site.location.timeZone`), comme le
@@ -59,8 +94,8 @@ Aucun export ni méthode retiré, aucune signature changée parmi celles utilis�
 constantes `WIDGET_*`, `validateWidgetContent`, `validateWidgetImage` ; nouvelles catégories
 (`BATTERY_STORAGE`, `GRID_SENSOR`, `HOME_OUTPUT_SENSOR`…) et types (`ENERGY_PRODUCTION_SENSOR.POWER`,
 `BATTERY.CHARGING`, `TEXT.SELECT`) — les catégories actuelles des appareils restent valides, et
-les changer casserait les appareils existants (fonctionnalités figées). Les 99 tests d'origine
-passent sans modification.
+changer une catégorie ou un type passe par « Mettre à jour » (voir plus bas). Les 99 tests
+d'origine passent sans modification.
 
 ## Travailler sur ce dépôt
 
@@ -69,6 +104,8 @@ passent sans modification.
   après avoir modifié ce fichier ou le README, sinon la CI tombe.
 - La CI tourne en Node 24. Une session cloud a Node 22 par défaut, ce qui suffit (`engines` :
   `>=20`).
+- Pour lire le cœur : `git clone --depth 1 https://github.com/GladysAssistant/Gladys` (le proxy
+  le permet), hors du dépôt.
 - Une session de code n'a **ni instance Gladys ni appareil réel**. La suite de tests, le lint et
   le validateur du store sont les seules vérifications possibles : le test réel passe par
   Guilhem ou par les testeurs du forum. Le dire, plutôt que de conclure que « ça marche ».
@@ -117,6 +154,30 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
   plus (un widget, si) : prévoir un champ de config `language`. Le superviseur injecte `TZ`, le
   fuseau de Gladys, dans le conteneur. La sandbox est limitée à 256 Mo.
 
+**Énergie (Gladys 5.1.4, lu dans le cœur le 09/10/2026)**
+
+- `ENERGY_INDEX_FEATURE_TYPES` (`server/services/energy-monitoring/utils/constants.js`) =
+  `energy-sensor/index`, **`energy-sensor/energy`**, `switch/energy`, `teleinformation/east` et
+  `easf01..10`. Pour toute mesure publiée de ces types, `getDiscoveredDevices` (`withEnergyFeatures`)
+  ajoute `<external_id>_consumption` (`thirty-minutes-consumption`) et `<external_id>_cost`, et le
+  cœur facture leurs deltas comme consommation de la maison. Une énergie qui n'est pas un compteur
+  cumulatif de **consommation** ne doit jamais avoir ces types. Payé sur cette intégration
+  (production et surplus injecté comptés comme consommation).
+- `energy-sensor/daily-consumption` = **un état par jour** (Enedis) : le résumé hebdomadaire fait
+  `SUM(value)` par jour (`getConsumptionByDates`). Un total courant publié à chaque relevé y serait
+  compté des dizaines de fois. Pour un total depuis minuit : `energy-sensor/index-today`.
+- Le pipeline de production ne lit que `energy-production-sensor/index`, **et seulement si** une
+  fonctionnalité `thirty-minutes-production` liée par `energy_parent_id` existe. En 5.1.4, rien ne
+  la crée pour une intégration externe (`addEnergyFeatures` ne fait que la consommation) : l'index
+  de production est juste, mais Gladys n'en tire pas encore de production par demi-heure.
+- **« Mettre à jour » (Découverte)** poste la liste publiée à `device.create` : une fonctionnalité
+  retrouvée (même `external_id`) est **mise à jour, catégorie et type compris** (même ligne,
+  historique gardé) ; une fonctionnalité absente de la liste est **supprimée** (`destroy`, son
+  historique n'est plus accessible) ; les dérivées `_consumption`/`_cost` ne sont réinjectées que
+  si leur source est encore un index (`matchPublishedIndex`), sinon supprimées. Sans clic, la base
+  garde les anciens types et les pipelines continuent. Un appareil qui n'est plus publié du tout
+  n'apparaît plus dans Découverte : il se supprime à la main.
+
 **Formulaires de configuration et actions**
 
 - Les champs `number` sont rendus en `<input type="number" min max>` **sans `step`** (le
@@ -152,6 +213,9 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
   une valeur de status > 40 caractères tronquée. Une `gauge` liée (`device_feature`) prend les
   bornes de la fonctionnalité : ne pas répéter `min`/`max`.
 - Un `button` sans `style` est accepté : c'est la forme à préférer (pas de `primary`).
+- Une tuile `value` accepte une valeur littérale (nombre, ou chaîne ≤ 12 caractères, `{ en, fr }`
+  possible) et un `unit` ≤ 6 caractères. Le front affiche une chaîne telle quelle, un nombre via
+  `Intl.NumberFormat(language, { maximumFractionDigits: 2 })` (avec séparateur de milliers).
 
 ## Publication et store
 
