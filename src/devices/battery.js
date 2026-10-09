@@ -112,10 +112,14 @@ export const battery = {
     if (config.storage_details) {
       features.push(
         {
+          // What the pack holds right now: it goes up AND down, so it is not
+          // an index. `energy-sensor/energy` would make the core derive a
+          // "(consumption)" feature from it and bill every charge as house
+          // consumption; `battery-storage` has the exact type.
           name: 'Énergie stockée',
           external_id: ids.feature(FEATURE.ENERGY_STORED),
-          category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
-          type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.ENERGY,
+          category: DEVICE_FEATURE_CATEGORIES.BATTERY_STORAGE,
+          type: DEVICE_FEATURE_TYPES.BATTERY_STORAGE.BATTERY_ENERGY_REMAINING,
           unit: DEVICE_FEATURE_UNITS.KILOWATT_HOUR,
           min: 0,
           max: 100,

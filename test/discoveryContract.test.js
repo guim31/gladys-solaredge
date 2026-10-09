@@ -184,9 +184,63 @@ test('the barest possible site — no meter, no battery, no tariff — still pas
     capabilities: { consumption: false, grid: false, battery: false, revenue: false },
   });
   assert.equal(payload.length, 1);
-  assert.equal(payload[0].features.length, 5);
+  assert.equal(payload[0].features.length, 3);
   assert.deepEqual(validateDiscoveredDevices(payload), []);
   assert.ok(wouldBePolled(payload[0]));
+});
+
+/**
+ * server/services/energy-monitoring/utils/constants.js (Gladys 5.1.4) —
+ * ENERGY_INDEX_FEATURE_TYPES: every feature of these category/type pairs is a
+ * cumulative CONSUMPTION index for the core, which adds "(consumption)" and
+ * "(cost)" features to it at discovery (getDiscoveredDevices,
+ * withEnergyFeatures) and bills its deltas as house consumption.
+ */
+const ENERGY_INDEX_FEATURE_TYPES = {
+  'energy-sensor': ['index', 'energy'],
+  switch: ['energy'],
+  teleinformation: [
+    'east',
+    ...Array.from({ length: 10 }, (_, i) => `easf${String(i + 1).padStart(2, '0')}`),
+  ],
+};
+
+/**
+ * server/lib/gateway/gateway.buildWeeklyDigestData.js — CONSUMPTION_FEATURE_
+ * TYPES: the weekly digest SUMS the states of these per day. Fine for one
+ * state per day or per half-hour, wrong for a running total published at every
+ * refresh. And the derived types are the core's own business.
+ */
+const CORE_CONSUMPTION_TYPES = {
+  'energy-sensor': [
+    'daily-consumption',
+    'thirty-minutes-consumption',
+    'thirty-minutes-consumption-cost',
+  ],
+};
+
+const isOneOf = (table, feature) => (table[feature.category] ?? []).includes(feature.type);
+
+test('no feature is one the core would count as house consumption', () => {
+  // The bug of the first real test: production of the month and of the year,
+  // energy exported and imported today, all `energy-sensor/energy`, turned
+  // into "(consumption)" features — solar production billed as consumption.
+  const payload = buildPayload({ config: { storage_details: true } });
+  const offenders = payload
+    .flatMap((device) => device.features)
+    .filter((f) => isOneOf(ENERGY_INDEX_FEATURE_TYPES, f) || isOneOf(CORE_CONSUMPTION_TYPES, f))
+    .map((f) => `${f.name} (${f.category}/${f.type})`);
+  assert.deepEqual(offenders, []);
+});
+
+test('the only cumulative index is the lifetime production, in the production category', () => {
+  const indexes = buildPayload({ config: { storage_details: true } })
+    .flatMap((device) => device.features)
+    .filter((f) => /index$/.test(f.type) && f.type !== 'index-today');
+  assert.deepEqual(
+    indexes.map((f) => [f.name, f.category, f.type]),
+    [['Production totale', 'energy-production-sensor', 'index']],
+  );
 });
 
 test('poll_frequency is one of the values the core accepts, in milliseconds', () => {

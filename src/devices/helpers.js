@@ -2,6 +2,8 @@
 // Small helpers shared by the device modules.
 // -----------------------------------------------------------------------------
 
+import { DEVICE_FEATURE_CATEGORIES, DEVICE_FEATURE_TYPES } from '@gladysassistant/integration-sdk';
+
 /**
  * How often Gladys wakes us up for a device, in MILLISECONDS.
  *
@@ -28,6 +30,34 @@
  * feature stays on "no recent value" forever, with nothing in the logs.
  */
 export const GLADYS_POLL_FREQUENCY = 60_000;
+
+/**
+ * Category and type of every "energy since midnight" total that is not the
+ * production (consumption, self-consumption, imported, exported today).
+ *
+ * The type decides what the CORE does with the values, not just the label:
+ *
+ *   - `energy-sensor/energy` and `energy-sensor/index` are cumulative
+ *     CONSUMPTION indexes for Gladys (energy-monitoring ENERGY_INDEX_FEATURE_
+ *     TYPES): the core adds "(consumption)" and "(cost)" features to each and
+ *     bills their deltas as house consumption. Exported energy billed as
+ *     consumption, and every midnight reset read as a counter reset — that is
+ *     what the first real test showed (Gladys 5.1.4, 2026-10-09).
+ *   - `energy-sensor/daily-consumption` is ONE value per day for the core
+ *     (Enedis writes one state per day): the weekly digest SUMS its states of
+ *     a day (energy-sensor.getConsumptionByDates, SUM(value)). A running total
+ *     published every refresh would count ~50 times over.
+ *   - `energy-sensor/index-today` is a running total since midnight — what
+ *     Tasmota's "Energy Today" publishes — and no core pipeline reads it.
+ *
+ * It is the only type that says what these values are and that the core
+ * leaves alone. Production today keeps `energy-production-sensor/
+ * daily-production`, which no pipeline reads either.
+ */
+export const DAILY_ENERGY = {
+  category: DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
+  type: DEVICE_FEATURE_TYPES.ENERGY_SENSOR.INDEX_TODAY,
+};
 
 /**
  * Build a `publishStates` batch, dropping the features with no value.

@@ -138,8 +138,8 @@ test('the revenue feature only exists when SolarEdge computes a revenue', () => 
     createContext({ capabilities: { revenue: false } }),
   ).find((d) => d.name.includes('Production'));
 
-  assert.equal(withTariff.features.length, 6);
-  assert.equal(withoutTariff.features.length, 5);
+  assert.equal(withTariff.features.length, 4);
+  assert.equal(withoutTariff.features.length, 3);
   assert.equal(
     withoutTariff.features.some((f) => f.external_id.endsWith(':revenue-today')),
     false,
@@ -174,7 +174,7 @@ test('findBlueprintByDevice routes an external_id back to its owner', () => {
   );
 });
 
-test('the production device publishes power and every counter', async () => {
+test('the production device publishes power, today, the lifetime index and the revenue', async () => {
   const gladys = createFakeGladys();
   const snapshot = await buildSnapshot();
   const bp = DEVICE_BLUEPRINTS.find((b) => b.key === 'solaredge-production');
@@ -183,9 +183,10 @@ test('the production device publishes power and every counter', async () => {
 
   assert.equal(stateOf(gladys, 'power'), 4200);
   assert.equal(stateOf(gladys, 'energy-today'), 21.4);
-  assert.equal(stateOf(gladys, 'energy-month'), 612);
-  assert.equal(stateOf(gladys, 'energy-year'), 4120);
   assert.equal(stateOf(gladys, 'energy-total'), 18540);
+  // Month and year are widget values, never features (see the contract test).
+  assert.equal(stateOf(gladys, 'energy-month'), undefined);
+  assert.equal(stateOf(gladys, 'energy-year'), undefined);
   assert.equal(stateOf(gladys, 'revenue-today'), 3.21);
 });
 

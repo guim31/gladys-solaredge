@@ -17,6 +17,7 @@ import {
   buildEnergyFlowContent,
   buildProductionContent,
   buildUnavailableContent,
+  formatEnergy,
   formatMoney,
   formatNumber,
   formatTime,
@@ -266,9 +267,19 @@ test('production: four counters, an area chart, the revenue and the time', () =>
   assert.equal(content.ttl_seconds, WIDGET_TTL);
 
   const ids = view.features.production;
+  const tiles = byType(content, 'value');
+  // Today is live; month, year and lifetime come from the snapshot.
   assert.deepEqual(
-    byType(content, 'value').map((t) => t.device_feature),
-    [ids.ENERGY_TODAY, ids.ENERGY_MONTH, ids.ENERGY_YEAR, ids.ENERGY_TOTAL],
+    tiles.map((t) => t.device_feature),
+    [ids.ENERGY_TODAY, undefined, undefined, undefined],
+  );
+  assert.deepEqual(
+    tiles.slice(1).map((t) => [t.label.fr, t.value.fr, t.value.en, t.unit]),
+    [
+      ['Ce mois', '612', '612', 'kWh'],
+      ['Cette année', '4120', '4120', 'kWh'],
+      ['Total', '18540', '18540', 'kWh'],
+    ],
   );
   const chart = one(content, 'chart');
   assert.deepEqual(chart.device_features, [ids.POWER]);
@@ -295,10 +306,12 @@ test('production without a tariff: no revenue row, the time stays', () => {
   assert.deepEqual(rowLabels(one(content, 'status')), ['Actualisé à']);
 });
 
-test('production before the first reading: the counters and a sentence', () => {
+test('production before the first reading: the live counter and a sentence', () => {
   const context = createContext();
   const content = buildProductionContent(createView({ context, snapshot: null }), {});
   assertWellFormed(content, context);
+  // The snapshot tiles need a value: without a reading only the live one stays.
+  assert.equal(byType(content, 'value').length, 1);
   assert.equal(byType(content, 'status').length, 0);
   assert.equal(one(content, 'text').variant, 'body');
 });
@@ -400,6 +413,11 @@ test('numbers, money and times are formatted for each language', () => {
   assert.deepEqual(formatNumber(1234.5, 1, 'kWh'), { en: '1234.5 kWh', fr: '1234,5 kWh' });
   assert.deepEqual(formatNumber(21.4, 2, 'kWh'), { en: '21.4 kWh', fr: '21,4 kWh' });
   assert.deepEqual(formatNumber(62, 0, '%'), { en: '62%', fr: '62 %' });
+  // Energies: two decimals for a day, none from 1000 kWh on (narrow tiles).
+  assert.deepEqual(formatEnergy(9.844), { en: '9.84 kWh', fr: '9,84 kWh' });
+  assert.deepEqual(formatEnergy(999.99), { en: '999.99 kWh', fr: '999,99 kWh' });
+  assert.deepEqual(formatEnergy(3052.54), { en: '3053 kWh', fr: '3053 kWh' });
+  assert.deepEqual(formatEnergy(26618.84), { en: '26619 kWh', fr: '26619 kWh' });
   // Money always carries two decimals.
   assert.deepEqual(formatMoney(3.2, 'euro'), { en: '€3.20', fr: '3,20 €' });
   assert.deepEqual(formatMoney(0, 'euro'), { en: '€0.00', fr: '0,00 €' });

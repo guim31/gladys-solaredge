@@ -5,7 +5,8 @@
 //                   grid, battery), the power chart, today's balance and a
 //                   "Refresh" button;
 //   - production  : today / month / year / lifetime production tiles and the
-//                   PV power curve;
+//                   PV power curve (month, year and lifetime from the snapshot:
+//                   no feature carries the first two, see devices/production.js);
 //   - battery     : charge gauge, battery power, state, stored energy,
 //                   temperature and the low-battery flag.
 //
@@ -247,11 +248,18 @@ function energyFlowRows({ snapshot, currency }) {
 export function buildProductionContent(view, settings) {
   const { features, snapshot } = view;
   const ids = features.production;
+  const overview = snapshot?.overview;
   const components = [
     tile(ids.ENERGY_TODAY, TEXT.today, 'sun'),
-    tile(ids.ENERGY_MONTH, TEXT.thisMonth, 'calendar'),
-    tile(ids.ENERGY_YEAR, TEXT.thisYear, 'trending-up'),
-    tile(ids.ENERGY_TOTAL, TEXT.total, 'database'),
+    // Month, year and lifetime are written from the snapshot, not bound. The
+    // month and year are no device features at all (see devices/production.js),
+    // and a bound tile is rendered by the core as `Math.round(v * 10) / 10` +
+    // unit: "3052.5 kWh" or "26618.8 kWh" overflow a narrow tile and show as
+    // "3052.3 …" (first real test, 2026-10-09). Here they get no decimal from
+    // 1000 kWh on. Without a reading the tile is left out (a value is required).
+    energyTile(overview?.energyMonth, TEXT.thisMonth, 'calendar'),
+    energyTile(overview?.energyYear, TEXT.thisYear, 'trending-up'),
+    energyTile(overview?.energyLifetime, TEXT.total, 'database'),
     {
       type: 'chart',
       device_features: [ids.POWER],
@@ -263,7 +271,7 @@ export function buildProductionContent(view, settings) {
   if (snapshot) {
     components.push(
       status([
-        revenueRow(snapshot.overview?.revenueToday, view.currency),
+        revenueRow(overview?.revenueToday, view.currency),
         { label: TEXT.updatedAt, value: formatTime(snapshot.fetchedAt, view.timeZone) },
       ]),
     );
@@ -347,9 +355,32 @@ function updatedAt(snapshot, timeZone) {
   };
 }
 
+/**
+ * A tile showing an energy from the snapshot (not bound to a feature), or
+ * nothing when SolarEdge did not report it. The number and its unit travel
+ * apart: the core draws the unit smaller, and a string value is shown as is
+ * (a NUMBER would be re-formatted with thousands grouping by the core).
+ */
+function energyTile(kwh, label, icon) {
+  if (!isNumber(kwh)) {
+    return null;
+  }
+  const digits = energyDigits(kwh);
+  return {
+    type: 'value',
+    value: {
+      en: localizeNumber(kwh, digits, LOCALES.en),
+      fr: localizeNumber(kwh, digits, LOCALES.fr),
+    },
+    unit: 'kWh',
+    label,
+    icon,
+  };
+}
+
 /** A status row for an energy, or nothing when SolarEdge did not report it. */
 function energyRow(label, kwh) {
-  return isNumber(kwh) ? { label, value: formatNumber(kwh, 2, 'kWh') } : null;
+  return isNumber(kwh) ? { label, value: formatEnergy(kwh) } : null;
 }
 
 /** The revenue row, only when SolarEdge computes one (a tariff was entered). */
@@ -406,6 +437,21 @@ export function formatNumber(value, digits, unit) {
     en: `${localizeNumber(value, digits, LOCALES.en)}${separator}${unit}`,
     fr: `${localizeNumber(value, digits, LOCALES.fr)} ${unit}`,
   };
+}
+
+/**
+ * Decimals worth showing for an energy in kWh: two for a day's worth (21.4,
+ * 0.35), none from 1000 kWh on (3052, 26619) — a year or a lifetime does not
+ * need its watt-hours, and a tile has room for about eight characters.
+ * @param {number} kwh
+ */
+export function energyDigits(kwh) {
+  return Math.abs(kwh) >= 1000 ? 0 : 2;
+}
+
+/** An energy with its unit, in both languages (`21.4 kWh`, `3052 kWh`). */
+export function formatEnergy(kwh) {
+  return formatNumber(kwh, energyDigits(kwh), 'kWh');
 }
 
 /**
