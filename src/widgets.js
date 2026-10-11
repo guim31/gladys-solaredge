@@ -23,11 +23,12 @@
 //      object out. index.js only wires them to the SDK, so the whole surface
 //      is unit-tested without a Gladys instance.
 //
-// Texts are multi-language objects (`{ en, fr }`): the core picks the user's
-// language, so the content does not depend on the request language. The
-// core's content budget: 8 components, 6 tiles (value | gauge), 1 focal
-// (chart), 1 status (≤ 10 rows), 2 texts (1 body), 4 buttons. No `primary`
-// button style: Gladys paints it like the others in dark mode.
+// Texts are multi-language objects (`{ en, fr, de, es }`, see i18n.js): the
+// core picks the user's language, so the content does not depend on the
+// request language. The core's content budget: 8 components, 6 tiles
+// (value | gauge), 1 focal (chart), 1 status (≤ 10 rows), 2 texts (1 body),
+// 4 buttons. No `primary` button style: Gladys paints it like the others in
+// dark mode.
 // -----------------------------------------------------------------------------
 
 import {
@@ -37,6 +38,7 @@ import {
   WIDGET_TEXT_VARIANTS,
 } from '@gladysassistant/integration-sdk';
 import { BATTERY_STATES } from './solaredge/snapshot.js';
+import { localize } from './i18n.js';
 import { production } from './devices/production.js';
 import { consumption } from './devices/consumption.js';
 import { grid } from './devices/grid.js';
@@ -77,58 +79,107 @@ const STATIC_TTL = 3600;
 /** A content shown while the integration is not initialized yet. */
 const WAITING_TTL = 60;
 
-/** Multi-language labels, in one place. */
-const TEXT = {
-  production: { en: 'Production', fr: 'Production' },
-  consumption: { en: 'Consumption', fr: 'Consommation' },
-  grid: { en: 'Grid', fr: 'Réseau' },
-  battery: { en: 'Battery', fr: 'Batterie' },
-  productionToday: { en: 'Production today', fr: 'Production du jour' },
-  consumptionToday: { en: 'Consumption today', fr: 'Consommation du jour' },
-  selfConsumption: { en: 'Self-consumption', fr: 'Autoconsommation' },
-  imported: { en: 'Imported', fr: 'Soutiré' },
-  exported: { en: 'Exported', fr: 'Injecté' },
-  revenueToday: { en: 'Revenue today', fr: 'Revenu du jour' },
-  today: { en: 'Today', fr: "Aujourd'hui" },
-  thisMonth: { en: 'This month', fr: 'Ce mois' },
-  thisYear: { en: 'This year', fr: 'Cette année' },
-  total: { en: 'Total', fr: 'Total' },
-  chargeLevel: { en: 'Charge level', fr: 'Niveau de charge' },
-  power: { en: 'Power', fr: 'Puissance' },
-  state: { en: 'State', fr: 'État' },
-  energyStored: { en: 'Stored energy', fr: 'Énergie stockée' },
-  temperature: { en: 'Temperature', fr: 'Température' },
-  batteryLow: { en: 'Battery low', fr: 'Batterie faible' },
-  yes: { en: 'Yes', fr: 'Oui' },
-  updatedAt: { en: 'Updated at', fr: 'Actualisé à' },
-  refresh: { en: 'Refresh', fr: 'Actualiser' },
+/** Multi-language labels, in one place (exported for test/i18n.test.js). */
+export const TEXT = {
+  production: { en: 'Production', fr: 'Production', de: 'Produktion', es: 'Producción' },
+  consumption: { en: 'Consumption', fr: 'Consommation', de: 'Verbrauch', es: 'Consumo' },
+  grid: { en: 'Grid', fr: 'Réseau', de: 'Netz', es: 'Red' },
+  battery: { en: 'Battery', fr: 'Batterie', de: 'Batterie', es: 'Batería' },
+  productionToday: {
+    en: 'Production today',
+    fr: 'Production du jour',
+    de: 'Produktion heute',
+    es: 'Producción de hoy',
+  },
+  consumptionToday: {
+    en: 'Consumption today',
+    fr: 'Consommation du jour',
+    de: 'Verbrauch heute',
+    es: 'Consumo de hoy',
+  },
+  selfConsumption: {
+    en: 'Self-consumption',
+    fr: 'Autoconsommation',
+    de: 'Eigenverbrauch',
+    es: 'Autoconsumo',
+  },
+  imported: { en: 'Imported', fr: 'Soutiré', de: 'Netzbezug', es: 'Importada' },
+  exported: { en: 'Exported', fr: 'Injecté', de: 'Einspeisung', es: 'Exportada' },
+  revenueToday: {
+    en: 'Revenue today',
+    fr: 'Revenu du jour',
+    de: 'Ertrag heute',
+    es: 'Ingresos de hoy',
+  },
+  today: { en: 'Today', fr: "Aujourd'hui", de: 'Heute', es: 'Hoy' },
+  thisMonth: { en: 'This month', fr: 'Ce mois', de: 'Dieser Monat', es: 'Este mes' },
+  thisYear: { en: 'This year', fr: 'Cette année', de: 'Dieses Jahr', es: 'Este año' },
+  total: { en: 'Total', fr: 'Total', de: 'Gesamt', es: 'Total' },
+  chargeLevel: {
+    en: 'Charge level',
+    fr: 'Niveau de charge',
+    de: 'Ladestand',
+    es: 'Nivel de carga',
+  },
+  power: { en: 'Power', fr: 'Puissance', de: 'Leistung', es: 'Potencia' },
+  state: { en: 'State', fr: 'État', de: 'Status', es: 'Estado' },
+  energyStored: {
+    en: 'Stored energy',
+    fr: 'Énergie stockée',
+    de: 'Gespeicherte Energie',
+    es: 'Energía almacenada',
+  },
+  temperature: { en: 'Temperature', fr: 'Température', de: 'Temperatur', es: 'Temperatura' },
+  batteryLow: {
+    en: 'Battery low',
+    fr: 'Batterie faible',
+    de: 'Niedriger Batteriestand',
+    es: 'Batería baja',
+  },
+  yes: { en: 'Yes', fr: 'Oui', de: 'Ja', es: 'Sí' },
+  updatedAt: {
+    en: 'Updated at',
+    fr: 'Actualisé à',
+    de: 'Aktualisiert um',
+    es: 'Actualizado a las',
+  },
+  refresh: { en: 'Refresh', fr: 'Actualiser', de: 'Aktualisieren', es: 'Actualizar' },
   noBattery: {
     en: 'No battery on this SolarEdge site.',
     fr: 'Aucune batterie sur ce site SolarEdge.',
+    de: 'Keine Batterie an diesem SolarEdge-Standort.',
+    es: 'No hay batería en este sitio de SolarEdge.',
   },
   noReading: {
     en: 'No SolarEdge reading yet: the first refresh is on its way.',
     fr: 'Aucune lecture SolarEdge pour le moment : la première interrogation est en cours.',
+    de: 'Noch keine SolarEdge-Messwerte: Die erste Abfrage läuft.',
+    es: 'Todavía no hay lecturas de SolarEdge: la primera consulta está en curso.',
   },
   notConnected: {
     en: 'SolarEdge is not connected yet: check the integration settings.',
     fr: "SolarEdge n'est pas encore connecté : vérifiez la configuration de l'intégration.",
+    de: 'SolarEdge ist noch nicht verbunden: Prüfe die Einstellungen der Integration.',
+    es: 'SolarEdge aún no está conectado: revise la configuración de la integración.',
   },
 };
 
 /** Battery states: the same wording as the device's text feature. */
-const BATTERY_STATE_TEXT = {
+export const BATTERY_STATE_TEXT = {
   [BATTERY_STATES.CHARGING]: {
-    text: { en: 'Charging', fr: 'En charge' },
+    text: { en: 'Charging', fr: 'En charge', de: 'Lädt', es: 'Cargando' },
     color: WIDGET_COLORS.SUCCESS,
   },
   [BATTERY_STATES.DISCHARGING]: {
-    text: { en: 'Discharging', fr: 'En décharge' },
+    text: { en: 'Discharging', fr: 'En décharge', de: 'Entlädt', es: 'Descargando' },
     color: WIDGET_COLORS.INFO,
   },
-  [BATTERY_STATES.IDLE]: { text: { en: 'Idle', fr: 'Au repos' }, color: WIDGET_COLORS.NEUTRAL },
+  [BATTERY_STATES.IDLE]: {
+    text: { en: 'Idle', fr: 'Au repos', de: 'Inaktiv', es: 'En reposo' },
+    color: WIDGET_COLORS.NEUTRAL,
+  },
   [BATTERY_STATES.DISABLED]: {
-    text: { en: 'Disabled', fr: 'Désactivée' },
+    text: { en: 'Disabled', fr: 'Désactivée', de: 'Deaktiviert', es: 'Desactivada' },
     color: WIDGET_COLORS.NEUTRAL,
   },
 };
@@ -351,7 +402,7 @@ function updatedAt(snapshot, timeZone) {
   return {
     type: 'text',
     variant: WIDGET_TEXT_VARIANTS.CAPTION,
-    text: { en: `${TEXT.updatedAt.en} ${time}`, fr: `${TEXT.updatedAt.fr} ${time}` },
+    text: localize((language) => `${TEXT.updatedAt[language]} ${time}`),
   };
 }
 
@@ -368,10 +419,7 @@ function energyTile(kwh, label, icon) {
   const digits = energyDigits(kwh);
   return {
     type: 'value',
-    value: {
-      en: localizeNumber(kwh, digits, LOCALES.en),
-      fr: localizeNumber(kwh, digits, LOCALES.fr),
-    },
+    value: localize((language) => localizeNumber(kwh, digits, LOCALES[language])),
     unit: 'kWh',
     label,
     icon,
@@ -402,10 +450,10 @@ function isNumber(value) {
 
 /** Join two multi-language texts with a middle dot. */
 function join(left, right) {
-  return { en: `${left.en} · ${right.en}`, fr: `${left.fr} · ${right.fr}` };
+  return localize((language) => `${left[language]} · ${right[language]}`);
 }
 
-const LOCALES = { en: 'en-GB', fr: 'fr-FR' };
+const LOCALES = { en: 'en-GB', fr: 'fr-FR', de: 'de-DE', es: 'es-ES' };
 
 /**
  * A number for one language: the decimal separator of the language, no
@@ -425,18 +473,18 @@ function localizeNumber(value, digits, locale, minimumDigits = 0) {
 }
 
 /**
- * A number with its unit, in both languages (`21.4 kWh` / `21,4 kWh`).
+ * A number with its unit, in every language (`21.4 kWh` / `21,4 kWh`).
  * @param {number} value
  * @param {number} digits maximum fraction digits
  * @param {string} unit
  */
 export function formatNumber(value, digits, unit) {
-  // English writes the percent sign attached (62%), French spaces it (62 %).
-  const separator = unit === '%' ? '' : ' ';
-  return {
-    en: `${localizeNumber(value, digits, LOCALES.en)}${separator}${unit}`,
-    fr: `${localizeNumber(value, digits, LOCALES.fr)} ${unit}`,
-  };
+  // English writes the percent sign attached (62%), French, German and
+  // Spanish space it (62 %).
+  return localize((language) => {
+    const separator = unit === '%' && language === 'en' ? '' : ' ';
+    return `${localizeNumber(value, digits, LOCALES[language])}${separator}${unit}`;
+  });
 }
 
 /**
@@ -449,7 +497,7 @@ export function energyDigits(kwh) {
   return Math.abs(kwh) >= 1000 ? 0 : 2;
 }
 
-/** An energy with its unit, in both languages (`21.4 kWh`, `3052 kWh`). */
+/** An energy with its unit, in every language (`21.4 kWh`, `3052 kWh`). */
 export function formatEnergy(kwh) {
   return formatNumber(kwh, energyDigits(kwh), 'kWh');
 }
@@ -462,10 +510,11 @@ export function formatEnergy(kwh) {
  */
 export function formatMoney(value, currency) {
   const symbol = CURRENCY_SYMBOLS[currency] ?? CURRENCY_SYMBOLS.euro;
-  return {
-    en: `${symbol}${localizeNumber(value, 2, LOCALES.en, 2)}`,
-    fr: `${localizeNumber(value, 2, LOCALES.fr, 2)} ${symbol}`,
-  };
+  // The symbol leads in English (€3.20) and follows elsewhere (3,20 €).
+  return localize((language) => {
+    const amount = localizeNumber(value, 2, LOCALES[language], 2);
+    return language === 'en' ? `${symbol}${amount}` : `${amount} ${symbol}`;
+  });
 }
 
 /**

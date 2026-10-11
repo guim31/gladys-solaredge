@@ -82,14 +82,14 @@ Jamais testé en réel : un site avec compteur, avec batterie, avec tarif.
   `settings`, sortie un contenu. `index.js` ne fait que câbler (`widgetView()`). Chaque blueprint
   expose `featureIds(gladys, ctx)` (tous les ids possibles ; seuls ceux toujours déclarés sont
   liés : jamais le revenu ni la télémétrie batterie, qui dépendent des capacités et de la config).
-- **Textes en objets `{ en, fr }`**, pas de localisation d'après `language` : le cœur choisit, et
-  met en cache par langue de toute façon. Les nombres sont formatés dans les deux langues sans
-  séparateur de milliers (`useGrouping: false`) et la devise est posée à la main (`€3.21` /
-  `3,21 €`) : **la sortie d'`Intl` pour le français change entre versions d'ICU** (U+00A0 puis
+- **Textes en objets `{ en, fr, de, es }`** (voir « Langues »), pas de localisation d'après
+  `language` : le cœur choisit, et met en cache par langue de toute façon. Les nombres sont formatés
+  dans chaque langue sans séparateur de milliers (`useGrouping: false`) et la devise est posée à
+  la main (`€3.21` / `3,21 €`) : **la sortie d'`Intl` pour le français change entre versions d'ICU** (U+00A0 puis
   U+202F comme séparateur de milliers, espace fine avant le symbole monétaire), ce qui casserait
   les tests entre Node 22 (session) et Node 24 (CI).
 - Les tuiles du mois, de l'année et du total du widget `production` sont **littérales** (chaîne
-  `{ en, fr }` + `unit: 'kWh'`), sans décimale dès 1000 kWh (`energyDigits`). Une tuile liée est
+  multilingue + `unit: 'kWh'`), sans décimale dès 1000 kWh (`energyDigits`). Une tuile liée est
   rendue par le front en `Math.round(v * 10) / 10` + unité, avec ellipse : « 26618.8 kWh » ne
   tient pas. Une valeur littérale **numérique** serait reformatée par le front avec séparateur de
   milliers (`Intl.NumberFormat(language)`) : passer une chaîne.
@@ -104,6 +104,26 @@ Jamais testé en réel : un site avec compteur, avec batterie, avec tarif.
 - Les réglages `interval` sont des `select` dont les valeurs sont **le sous-ensemble** de
   `WIDGET_CHART_INTERVALS` que les constantes exportées acceptent ; `pickInterval` retombe sur
   `last-day` pour toute autre valeur (un tableau de bord ancien).
+
+## Langues (campagne du 11/10/2026)
+
+- Tout texte montré à l'utilisateur porte **exactement `en`, `fr`, `de`, `es`**, les langues de
+  l'interface de Gladys (le front affiche la langue de l'utilisateur, sinon `en`). Manifeste comme
+  code : `LANGUAGES` et `localize()` dans `src/i18n.js`, garde-fou `test/i18n.test.js` (langues
+  exactes, textes non vides, bornes du store et du SDK, contenus de widgets passés à
+  `validateWidgetContent`). Un texte ajouté en deux langues fait tomber la CI.
+- Vocabulaire repris de `front/src/config/i18n/{de,es}.json` du cœur 5.1.4 : allemand au « du »,
+  espagnol au « usted » ; _Verbindung testen_ / _Probar conexión_, _Ertrag_ / _Ingresos_,
+  _Netzbezug_/_Einspeisung_, _Eigenverbrauch_ / _Autoconsumo_, _Standort_ / _sitio_ pour le site
+  SolarEdge. Les menus du portail SolarEdge (`Admin > Site Access > API Access`) restent en anglais
+  en `de`/`es` : leurs libellés localisés n'ont pas été vérifiés.
+- **Restent en français seul** : les noms d'appareils et de fonctionnalités (figés à la création)
+  et l'état texte de la batterie (`STATE_LABELS`, une chaîne simple, pas d'objet multilingue).
+  Aucun réglage de langue n'existe ; en ajouter un est un autre chantier.
+- **Doc par langue** : pas de `docs/de.md` ni `docs/es.md`. Le store ne lit et ne réhéberge que
+  `docs/en.md` et `docs/fr.md` (`DOCS_LANGUAGES` d'`integration-store`), et le cœur 5.1.4 ne lit la
+  doc que depuis l'index du store (`docs[language] || docs.en`) : un `de.md` ne serait jamais
+  affiché. À revoir si le store ajoute des langues.
 
 ## SDK 0.9 → 0.14 (vérifié en session, le 05/10/2026)
 
@@ -209,7 +229,7 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
   s'efface à chaque frappe), et une action n'applique **aucun `default`**, ni à l'affichage ni
   côté serveur, tout en exigeant les champs `required` (422).
 - Une action ou une action de widget qui **lève** n'envoie à Gladys qu'une chaîne
-  (`error: e.message`, SDK `_runHandler`) : un message bilingue doit être **résolu**, pas levé
+  (`error: e.message`, SDK `_runHandler`) : un message multilingue doit être **résolu**, pas levé
   (`NOT_CONFIGURED_MESSAGE`, `describeError` dans `src/actions.js`). Une erreur en français seul
   levée depuis `refreshAll` donnait un toast anglais mélangé : d'où le code `NOT_READY`.
 
@@ -234,8 +254,8 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
   une valeur de status > 40 caractères tronquée. Une `gauge` liée (`device_feature`) prend les
   bornes de la fonctionnalité : ne pas répéter `min`/`max`.
 - Un `button` sans `style` est accepté : c'est la forme à préférer (pas de `primary`).
-- Une tuile `value` accepte une valeur littérale (nombre, ou chaîne ≤ 12 caractères, `{ en, fr }`
-  possible) et un `unit` ≤ 6 caractères. Le front affiche une chaîne telle quelle, un nombre via
+- Une tuile `value` accepte une valeur littérale (nombre, ou chaîne ≤ 12 caractères, objet
+  multilingue possible) et un `unit` ≤ 6 caractères. Le front affiche une chaîne telle quelle, un nombre via
   `Intl.NumberFormat(language, { maximumFractionDigits: 2 })` (avec séparateur de milliers).
 
 ## Publication et store

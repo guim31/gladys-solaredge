@@ -21,7 +21,7 @@ function createDeps({ overrides = {}, config = {}, refreshAll } = {}) {
   return { config: normalized, service, refreshAll: refreshAll ?? (async () => 12) };
 }
 
-test('every action answers in both languages', async () => {
+test('every action answers in every language', async () => {
   const gladys = createFakeGladys();
   for (const [key, handler] of Object.entries(ACTIONS)) {
     const message = await handler(gladys, createDeps());
@@ -143,7 +143,7 @@ test('describeError blames the right side', () => {
   assert.match(describeError(undefined).en, /unknown error/);
 });
 
-test('the "not configured" message exists in both languages and fits a toast', () => {
+test('the "not configured" message exists in every language and fits a toast', () => {
   assert.ok(NOT_CONFIGURED_MESSAGE.en && NOT_CONFIGURED_MESSAGE.fr);
   for (const text of Object.values(NOT_CONFIGURED_MESSAGE)) {
     assert.ok(text.length <= 200);

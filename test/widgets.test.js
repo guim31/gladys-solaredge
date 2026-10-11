@@ -25,6 +25,7 @@ import {
   widgetFeatures,
 } from '../src/widgets.js';
 import { buildDiscoveredDevices } from '../src/devices/index.js';
+import { LANGUAGES } from '../src/i18n.js';
 import { normalizeConfig } from '../src/config.js';
 import {
   parseEnergyDetails,
@@ -100,17 +101,20 @@ const one = (content, type) => {
 const rowLabels = (status) => status.items.map((item) => item.label.fr);
 const row = (status, labelFr) => status.items.find((item) => item.label.fr === labelFr);
 
-/** Every text the core would show must exist in both languages. */
-function assertBilingual(value, path = 'content') {
+/** Every text the core would show must exist in every language. */
+function assertLocalized(value, path = 'content') {
   if (Array.isArray(value)) {
-    value.forEach((item, i) => assertBilingual(item, `${path}[${i}]`));
+    value.forEach((item, i) => assertLocalized(item, `${path}[${i}]`));
   } else if (value && typeof value === 'object') {
-    if ('en' in value || 'fr' in value) {
-      assert.ok(value.en && value.fr, `${path} is not bilingual: ${JSON.stringify(value)}`);
+    if (LANGUAGES.some((language) => language in value)) {
+      assert.ok(
+        LANGUAGES.every((language) => value[language]),
+        `${path} is not in every language: ${JSON.stringify(value)}`,
+      );
       return;
     }
     for (const [key, child] of Object.entries(value)) {
-      assertBilingual(child, `${path}.${key}`);
+      assertLocalized(child, `${path}.${key}`);
     }
   }
 }
@@ -132,7 +136,7 @@ function assertBoundFeaturesDeclared(content, context) {
 /** The house rules every content must follow, whatever the site. */
 function assertWellFormed(content, context) {
   assert.deepEqual(validateWidgetContent(content), []);
-  assertBilingual(content);
+  assertLocalized(content);
   assertBoundFeaturesDeclared(content, context);
   const buttons = byType(content, 'button');
   const keys = buttons.map((b) => b.action?.key);
@@ -185,10 +189,25 @@ test('energy_flow on a full site: four live tiles, three-series chart, balance, 
     'Revenu du jour',
     'Batterie',
   ]);
-  assert.deepEqual(row(status, 'Production du jour').value, { en: '21.4 kWh', fr: '21,4 kWh' });
-  assert.deepEqual(row(status, 'Revenu du jour').value, { en: '€3.21', fr: '3,21 €' });
+  assert.deepEqual(row(status, 'Production du jour').value, {
+    en: '21.4 kWh',
+    fr: '21,4 kWh',
+    de: '21,4 kWh',
+    es: '21,4 kWh',
+  });
+  assert.deepEqual(row(status, 'Revenu du jour').value, {
+    en: '€3.21',
+    fr: '3,21 €',
+    de: '3,21 €',
+    es: '3,21 €',
+  });
   const batteryRow = row(status, 'Batterie');
-  assert.deepEqual(batteryRow.value, { en: '62% · Charging', fr: '62 % · En charge' });
+  assert.deepEqual(batteryRow.value, {
+    en: '62% · Charging',
+    fr: '62 % · En charge',
+    de: '62 % · Lädt',
+    es: '62 % · Cargando',
+  });
   assert.equal(batteryRow.color, 'success');
 
   const caption = one(content, 'text');
@@ -342,8 +361,18 @@ test('battery with detailed telemetry: gauge, power, state, stored energy, tempe
   assert.equal(row(status, 'État').value.fr, 'En charge');
   assert.equal(row(status, 'État').color, 'success');
   // 9600 Wh usable × 62 % = 5952 Wh.
-  assert.deepEqual(row(status, 'Énergie stockée').value, { en: '5.95 kWh', fr: '5,95 kWh' });
-  assert.deepEqual(row(status, 'Température').value, { en: '25.1 °C', fr: '25,1 °C' });
+  assert.deepEqual(row(status, 'Énergie stockée').value, {
+    en: '5.95 kWh',
+    fr: '5,95 kWh',
+    de: '5,95 kWh',
+    es: '5,95 kWh',
+  });
+  assert.deepEqual(row(status, 'Température').value, {
+    en: '25.1 °C',
+    fr: '25,1 °C',
+    de: '25,1 °C',
+    es: '25,1 °C',
+  });
   assert.equal(one(content, 'text').text.fr, 'Actualisé à 15:42');
 });
 
@@ -383,7 +412,7 @@ test('battery states: discharging is info, idle neutral, critical adds a red row
   const low = stateOf({ status: 'Disabled', currentPower: 0, chargeLevel: 5, critical: true }, []);
   assert.equal(row(low, 'État').value.fr, 'Désactivée');
   assert.equal(row(low, 'Batterie faible').color, 'danger');
-  assert.deepEqual(row(low, 'Batterie faible').value, { en: 'Yes', fr: 'Oui' });
+  assert.deepEqual(row(low, 'Batterie faible').value, { en: 'Yes', fr: 'Oui', de: 'Ja', es: 'Sí' });
 });
 
 test('battery on a site without storage: a sentence, not an error', () => {
@@ -411,26 +440,81 @@ test('battery declared but not in the last snapshot: the sentence replaces the s
 test('the waiting content is valid and says what to do', () => {
   const content = buildUnavailableContent();
   assert.deepEqual(validateWidgetContent(content), []);
-  assertBilingual(content);
+  assertLocalized(content);
   assert.match(content.components[0].text.fr, /configuration/);
 });
 
 test('numbers, money and times are formatted for each language', () => {
   // No thousands grouping: its character differs between ICU versions.
-  assert.deepEqual(formatNumber(1234.5, 1, 'kWh'), { en: '1234.5 kWh', fr: '1234,5 kWh' });
-  assert.deepEqual(formatNumber(21.4, 2, 'kWh'), { en: '21.4 kWh', fr: '21,4 kWh' });
-  assert.deepEqual(formatNumber(62, 0, '%'), { en: '62%', fr: '62 %' });
+  assert.deepEqual(formatNumber(1234.5, 1, 'kWh'), {
+    en: '1234.5 kWh',
+    fr: '1234,5 kWh',
+    de: '1234,5 kWh',
+    es: '1234,5 kWh',
+  });
+  assert.deepEqual(formatNumber(21.4, 2, 'kWh'), {
+    en: '21.4 kWh',
+    fr: '21,4 kWh',
+    de: '21,4 kWh',
+    es: '21,4 kWh',
+  });
+  assert.deepEqual(formatNumber(62, 0, '%'), { en: '62%', fr: '62 %', de: '62 %', es: '62 %' });
   // Energies: two decimals for a day, none from 1000 kWh on (narrow tiles).
-  assert.deepEqual(formatEnergy(9.844), { en: '9.84 kWh', fr: '9,84 kWh' });
-  assert.deepEqual(formatEnergy(999.99), { en: '999.99 kWh', fr: '999,99 kWh' });
-  assert.deepEqual(formatEnergy(3052.54), { en: '3053 kWh', fr: '3053 kWh' });
-  assert.deepEqual(formatEnergy(26618.84), { en: '26619 kWh', fr: '26619 kWh' });
+  assert.deepEqual(formatEnergy(9.844), {
+    en: '9.84 kWh',
+    fr: '9,84 kWh',
+    de: '9,84 kWh',
+    es: '9,84 kWh',
+  });
+  assert.deepEqual(formatEnergy(999.99), {
+    en: '999.99 kWh',
+    fr: '999,99 kWh',
+    de: '999,99 kWh',
+    es: '999,99 kWh',
+  });
+  assert.deepEqual(formatEnergy(3052.54), {
+    en: '3053 kWh',
+    fr: '3053 kWh',
+    de: '3053 kWh',
+    es: '3053 kWh',
+  });
+  assert.deepEqual(formatEnergy(26618.84), {
+    en: '26619 kWh',
+    fr: '26619 kWh',
+    de: '26619 kWh',
+    es: '26619 kWh',
+  });
   // Money always carries two decimals.
-  assert.deepEqual(formatMoney(3.2, 'euro'), { en: '€3.20', fr: '3,20 €' });
-  assert.deepEqual(formatMoney(0, 'euro'), { en: '€0.00', fr: '0,00 €' });
-  assert.deepEqual(formatMoney(3.21, 'dollar'), { en: '$3.21', fr: '3,21 $' });
-  assert.deepEqual(formatMoney(3.21, 'pound-sterling'), { en: '£3.21', fr: '3,21 £' });
-  assert.deepEqual(formatMoney(3.21, 'unknown'), { en: '€3.21', fr: '3,21 €' });
+  assert.deepEqual(formatMoney(3.2, 'euro'), {
+    en: '€3.20',
+    fr: '3,20 €',
+    de: '3,20 €',
+    es: '3,20 €',
+  });
+  assert.deepEqual(formatMoney(0, 'euro'), {
+    en: '€0.00',
+    fr: '0,00 €',
+    de: '0,00 €',
+    es: '0,00 €',
+  });
+  assert.deepEqual(formatMoney(3.21, 'dollar'), {
+    en: '$3.21',
+    fr: '3,21 $',
+    de: '3,21 $',
+    es: '3,21 $',
+  });
+  assert.deepEqual(formatMoney(3.21, 'pound-sterling'), {
+    en: '£3.21',
+    fr: '3,21 £',
+    de: '3,21 £',
+    es: '3,21 £',
+  });
+  assert.deepEqual(formatMoney(3.21, 'unknown'), {
+    en: '€3.21',
+    fr: '3,21 €',
+    de: '3,21 €',
+    es: '3,21 €',
+  });
 
   assert.equal(formatTime('2024-05-18T13:42:00Z', 'Europe/Paris'), '15:42');
   assert.equal(formatTime('2024-05-18T13:42:00Z', 'UTC'), '13:42');
