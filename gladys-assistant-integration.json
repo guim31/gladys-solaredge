@@ -4,7 +4,9 @@
   "name": "SolarEdge",
   "description": {
     "en": "Solar production, home consumption, grid exchanges and battery storage from SolarEdge.",
-    "fr": "Production solaire, consommation, échanges réseau et batterie depuis SolarEdge."
+    "fr": "Production solaire, consommation, échanges réseau et batterie depuis SolarEdge.",
+    "de": "Solarproduktion, Hausverbrauch, Netzbezug und Einspeisung sowie Batteriespeicher von SolarEdge.",
+    "es": "Producción solar, consumo de la casa, intercambios con la red y batería desde SolarEdge."
   },
   "version": "1.3.1",
   "docker_image": "ghcr.io/guim31/gladys-solaredge:1.3.1",
@@ -18,18 +20,24 @@
       "type": "section",
       "label": {
         "en": "Getting started",
-        "fr": "Pour commencer"
+        "fr": "Pour commencer",
+        "de": "Erste Schritte",
+        "es": "Primeros pasos"
       },
       "description": {
         "en": "This integration reads your installation through the SolarEdge Monitoring API. Generate an API key from the monitoring portal (Admin > Site Access > API Access), paste it below, then press \"Test the connection\". SolarEdge allows 300 requests per day and per site: the default refresh interval stays well within that budget.",
-        "fr": "Cette intégration lit votre installation via l'API SolarEdge Monitoring. Générez une clé d'API depuis le portail de supervision (Admin > Accès au site > Accès API), collez-la ci-dessous puis appuyez sur « Tester la connexion ». SolarEdge autorise 300 requêtes par jour et par site : l'intervalle de rafraîchissement par défaut reste largement dans ce budget."
+        "fr": "Cette intégration lit votre installation via l'API SolarEdge Monitoring. Générez une clé d'API depuis le portail de supervision (Admin > Accès au site > Accès API), collez-la ci-dessous puis appuyez sur « Tester la connexion ». SolarEdge autorise 300 requêtes par jour et par site : l'intervalle de rafraîchissement par défaut reste largement dans ce budget.",
+        "de": "Diese Integration liest deine Anlage über die SolarEdge Monitoring API aus. Erzeuge im Monitoring-Portal einen API-Schlüssel (Admin > Site Access > API Access), füge ihn unten ein und klicke dann auf „Verbindung testen“. SolarEdge erlaubt 300 Anfragen pro Tag und Standort: Das voreingestellte Aktualisierungsintervall bleibt deutlich darunter.",
+        "es": "Esta integración lee su instalación a través de la API SolarEdge Monitoring. Genere una clave de API en el portal de monitorización (Admin > Site Access > API Access), péguela abajo y pulse «Probar conexión». SolarEdge permite 300 solicitudes al día por sitio: el intervalo de actualización predeterminado queda muy por debajo de ese límite."
       },
       "links": [
         {
           "url": "https://monitoring.solaredge.com/",
           "label": {
             "en": "SolarEdge monitoring portal",
-            "fr": "Portail SolarEdge Monitoring"
+            "fr": "Portail SolarEdge Monitoring",
+            "de": "SolarEdge-Monitoring-Portal",
+            "es": "Portal SolarEdge Monitoring"
           }
         }
       ]
@@ -39,16 +47,22 @@
       "type": "secret",
       "label": {
         "en": "API key",
-        "fr": "Clé d'API"
+        "fr": "Clé d'API",
+        "de": "API-Schlüssel",
+        "es": "Clave de API"
       },
       "description": {
         "en": "SolarEdge Monitoring API key, generated in Admin > Site Access > API Access.",
-        "fr": "Clé d'API SolarEdge Monitoring, générée dans Admin > Accès au site > Accès API."
+        "fr": "Clé d'API SolarEdge Monitoring, générée dans Admin > Accès au site > Accès API.",
+        "de": "API-Schlüssel von SolarEdge Monitoring, erzeugt unter Admin > Site Access > API Access.",
+        "es": "Clave de la API SolarEdge Monitoring, generada en Admin > Site Access > API Access."
       },
       "required": true,
       "placeholder": {
         "en": "32 uppercase characters",
-        "fr": "32 caractères en majuscules"
+        "fr": "32 caractères en majuscules",
+        "de": "32 Zeichen in Großbuchstaben",
+        "es": "32 caracteres en mayúsculas"
       }
     },
     {
@@ -56,17 +70,23 @@
       "type": "string",
       "label": {
         "en": "Site ID",
-        "fr": "Identifiant du site"
+        "fr": "Identifiant du site",
+        "de": "Standort-ID",
+        "es": "ID del sitio"
       },
       "description": {
         "en": "Numeric site id. Leave empty when the API key covers a single site: it is detected automatically. Use the \"List my sites\" button otherwise.",
-        "fr": "Identifiant numérique du site. Laissez vide si la clé ne couvre qu'un seul site : il est détecté automatiquement. Utilisez sinon le bouton « Lister mes sites »."
+        "fr": "Identifiant numérique du site. Laissez vide si la clé ne couvre qu'un seul site : il est détecté automatiquement. Utilisez sinon le bouton « Lister mes sites ».",
+        "de": "Numerische Standort-ID. Leer lassen, wenn der API-Schlüssel nur einen Standort umfasst: Er wird automatisch erkannt. Andernfalls die Schaltfläche „Meine Standorte auflisten“ verwenden.",
+        "es": "ID numérico del sitio. Déjelo vacío si la clave de API solo da acceso a un sitio: se detecta automáticamente. Si no, use el botón «Listar mis sitios»."
       },
       "required": false,
       "default": "",
       "placeholder": {
         "en": "1234567",
-        "fr": "1234567"
+        "fr": "1234567",
+        "de": "1234567",
+        "es": "1234567"
       }
     },
     {
@@ -74,11 +94,15 @@
       "type": "number",
       "label": {
         "en": "Refresh interval (s)",
-        "fr": "Intervalle de rafraîchissement (s)"
+        "fr": "Intervalle de rafraîchissement (s)",
+        "de": "Aktualisierungsintervall (s)",
+        "es": "Intervalo de actualización (s)"
       },
       "description": {
         "en": "How often the live values (power flow, production totals) are refreshed. Each cycle costs 2 SolarEdge requests out of the 300 allowed per day, whatever the number of devices.",
-        "fr": "Fréquence de rafraîchissement des valeurs instantanées (flux de puissance, compteurs de production). Chaque cycle coûte 2 requêtes SolarEdge sur les 300 autorisées par jour, quel que soit le nombre d'appareils."
+        "fr": "Fréquence de rafraîchissement des valeurs instantanées (flux de puissance, compteurs de production). Chaque cycle coûte 2 requêtes SolarEdge sur les 300 autorisées par jour, quel que soit le nombre d'appareils.",
+        "de": "Wie oft die Live-Werte (Leistungsfluss, Produktionszähler) aktualisiert werden. Jeder Zyklus kostet 2 der 300 täglich erlaubten SolarEdge-Anfragen, unabhängig von der Anzahl der Geräte.",
+        "es": "Frecuencia de actualización de los valores en directo (flujo de potencia, contadores de producción). Cada ciclo consume 2 de las 300 solicitudes diarias que permite SolarEdge, sea cual sea el número de dispositivos."
       },
       "required": false,
       "default": 900,
@@ -90,11 +114,15 @@
       "type": "number",
       "label": {
         "en": "Daily breakdown interval (s)",
-        "fr": "Intervalle du bilan quotidien (s)"
+        "fr": "Intervalle du bilan quotidien (s)",
+        "de": "Intervall der Tagesbilanz (s)",
+        "es": "Intervalo del balance diario (s)"
       },
       "description": {
         "en": "How often the daily breakdown (consumption, self-consumption, imported, exported) is refreshed. Slower than the live values on purpose: it costs one more request per refresh.",
-        "fr": "Fréquence de rafraîchissement du bilan du jour (consommation, autoconsommation, énergie soutirée et injectée). Volontairement plus lent que les valeurs instantanées : il coûte une requête supplémentaire à chaque fois."
+        "fr": "Fréquence de rafraîchissement du bilan du jour (consommation, autoconsommation, énergie soutirée et injectée). Volontairement plus lent que les valeurs instantanées : il coûte une requête supplémentaire à chaque fois.",
+        "de": "Wie oft die Tagesbilanz (Verbrauch, Eigenverbrauch, Netzbezug, Einspeisung) aktualisiert wird. Bewusst langsamer als die Live-Werte: Jede Aktualisierung kostet eine zusätzliche Anfrage.",
+        "es": "Frecuencia de actualización del balance del día (consumo, autoconsumo, energía importada y exportada). Más lenta que los valores en directo a propósito: cada actualización consume una solicitud más."
       },
       "required": false,
       "default": 1800,
@@ -106,11 +134,15 @@
       "type": "boolean",
       "label": {
         "en": "Detailed battery telemetry",
-        "fr": "Télémétrie détaillée de la batterie"
+        "fr": "Télémétrie détaillée de la batterie",
+        "de": "Detaillierte Batteriedaten",
+        "es": "Telemetría detallada de la batería"
       },
       "description": {
         "en": "Add the stored energy and the battery temperature, read from the storage endpoint. Costs one more request per daily-breakdown cycle, and only applies to sites with a battery.",
-        "fr": "Ajoute l'énergie stockée et la température de la batterie, lues sur l'endpoint de stockage. Coûte une requête supplémentaire par cycle de bilan quotidien, et ne concerne que les sites équipés d'une batterie."
+        "fr": "Ajoute l'énergie stockée et la température de la batterie, lues sur l'endpoint de stockage. Coûte une requête supplémentaire par cycle de bilan quotidien, et ne concerne que les sites équipés d'une batterie.",
+        "de": "Fügt die gespeicherte Energie und die Batterietemperatur hinzu, gelesen vom Speicher-Endpunkt. Kostet eine zusätzliche Anfrage pro Tagesbilanz-Zyklus und gilt nur für Standorte mit Batterie.",
+        "es": "Añade la energía almacenada y la temperatura de la batería, leídas en el endpoint de almacenamiento. Consume una solicitud más por ciclo de balance diario y solo afecta a los sitios con batería."
       },
       "required": false,
       "default": false
@@ -120,11 +152,15 @@
       "type": "number",
       "label": {
         "en": "Daily request budget",
-        "fr": "Budget de requêtes quotidien"
+        "fr": "Budget de requêtes quotidien",
+        "de": "Tägliches Anfragebudget",
+        "es": "Presupuesto diario de solicitudes"
       },
       "description": {
         "en": "The integration stops calling SolarEdge once this many requests have been made today, so the API key never gets throttled. SolarEdge's own limit is 300 per day and per site.",
-        "fr": "L'intégration cesse d'appeler SolarEdge une fois ce nombre de requêtes atteint dans la journée, pour que la clé d'API ne soit jamais bloquée. La limite SolarEdge est de 300 par jour et par site."
+        "fr": "L'intégration cesse d'appeler SolarEdge une fois ce nombre de requêtes atteint dans la journée, pour que la clé d'API ne soit jamais bloquée. La limite SolarEdge est de 300 par jour et par site.",
+        "de": "Die Integration stellt die Anfragen an SolarEdge ein, sobald heute so viele Anfragen gestellt wurden, damit der API-Schlüssel nie gesperrt wird. Das Limit von SolarEdge selbst liegt bei 300 pro Tag und Standort.",
+        "es": "La integración deja de llamar a SolarEdge cuando alcanza este número de solicitudes en el día, para que la clave de API nunca quede bloqueada. El límite de SolarEdge es de 300 al día por sitio."
       },
       "required": false,
       "default": 300,
@@ -136,11 +172,15 @@
       "type": "select",
       "label": {
         "en": "Revenue currency",
-        "fr": "Devise des revenus"
+        "fr": "Devise des revenus",
+        "de": "Währung der Erträge",
+        "es": "Moneda de los ingresos"
       },
       "description": {
         "en": "Currency of the daily revenue reported by SolarEdge, as configured on your site.",
-        "fr": "Devise du revenu quotidien remonté par SolarEdge, telle que configurée sur votre site."
+        "fr": "Devise du revenu quotidien remonté par SolarEdge, telle que configurée sur votre site.",
+        "de": "Währung des von SolarEdge gemeldeten Tagesertrags, wie für deinen Standort eingestellt.",
+        "es": "Moneda de los ingresos diarios que comunica SolarEdge, tal como está configurada en su sitio."
       },
       "required": false,
       "default": "euro",
@@ -149,21 +189,27 @@
           "value": "euro",
           "label": {
             "en": "Euro",
-            "fr": "Euro"
+            "fr": "Euro",
+            "de": "Euro",
+            "es": "Euro"
           }
         },
         {
           "value": "dollar",
           "label": {
             "en": "Dollar",
-            "fr": "Dollar"
+            "fr": "Dollar",
+            "de": "Dollar",
+            "es": "Dólar"
           }
         },
         {
           "value": "pound-sterling",
           "label": {
             "en": "Pound sterling",
-            "fr": "Livre sterling"
+            "fr": "Livre sterling",
+            "de": "Pfund Sterling",
+            "es": "Libra esterlina"
           }
         }
       ]
@@ -174,11 +220,15 @@
       "key": "test_connection",
       "label": {
         "en": "Test the connection",
-        "fr": "Tester la connexion"
+        "fr": "Tester la connexion",
+        "de": "Verbindung testen",
+        "es": "Probar conexión"
       },
       "description": {
         "en": "Check the API key, resolve the site and list what this installation can report.",
-        "fr": "Vérifie la clé d'API, résout le site et liste ce que l'installation sait remonter."
+        "fr": "Vérifie la clé d'API, résout le site et liste ce que l'installation sait remonter.",
+        "de": "Prüft den API-Schlüssel, ermittelt den Standort und listet auf, was diese Anlage melden kann.",
+        "es": "Comprueba la clave de API, identifica el sitio y enumera lo que puede comunicar esta instalación."
       },
       "timeout_seconds": 30
     },
@@ -186,11 +236,15 @@
       "key": "list_sites",
       "label": {
         "en": "List my sites",
-        "fr": "Lister mes sites"
+        "fr": "Lister mes sites",
+        "de": "Meine Standorte auflisten",
+        "es": "Listar mis sitios"
       },
       "description": {
         "en": "Show every site the API key gives access to, with its id.",
-        "fr": "Affiche tous les sites auxquels la clé d'API donne accès, avec leur identifiant."
+        "fr": "Affiche tous les sites auxquels la clé d'API donne accès, avec leur identifiant.",
+        "de": "Zeigt alle Standorte, auf die der API-Schlüssel Zugriff gibt, mit ihrer ID.",
+        "es": "Muestra todos los sitios a los que da acceso la clave de API, con su ID."
       },
       "timeout_seconds": 30
     },
@@ -198,11 +252,15 @@
       "key": "refresh_now",
       "label": {
         "en": "Refresh now",
-        "fr": "Rafraîchir maintenant"
+        "fr": "Rafraîchir maintenant",
+        "de": "Jetzt aktualisieren",
+        "es": "Actualizar ahora"
       },
       "description": {
         "en": "Read SolarEdge immediately, without waiting for the next polling cycle.",
-        "fr": "Interroge SolarEdge immédiatement, sans attendre le prochain cycle."
+        "fr": "Interroge SolarEdge immédiatement, sans attendre le prochain cycle.",
+        "de": "Fragt SolarEdge sofort ab, ohne auf den nächsten Abfragezyklus zu warten.",
+        "es": "Consulta SolarEdge de inmediato, sin esperar al siguiente ciclo de consulta."
       },
       "timeout_seconds": 60
     },
@@ -210,11 +268,15 @@
       "key": "api_usage",
       "label": {
         "en": "API usage",
-        "fr": "Consommation de l'API"
+        "fr": "Consommation de l'API",
+        "de": "API-Nutzung",
+        "es": "Uso de la API"
       },
       "description": {
         "en": "How many SolarEdge requests were used today, and how many refreshes are left.",
-        "fr": "Nombre de requêtes SolarEdge utilisées aujourd'hui, et rafraîchissements restants."
+        "fr": "Nombre de requêtes SolarEdge utilisées aujourd'hui, et rafraîchissements restants.",
+        "de": "Wie viele SolarEdge-Anfragen heute verbraucht wurden und wie viele Aktualisierungen noch übrig sind.",
+        "es": "Cuántas solicitudes de SolarEdge se han usado hoy y cuántas actualizaciones quedan."
       },
       "timeout_seconds": 15
     }
@@ -224,11 +286,15 @@
       "key": "energy_flow",
       "label": {
         "en": "Energy flow",
-        "fr": "Flux d'énergie"
+        "fr": "Flux d'énergie",
+        "de": "Energiefluss",
+        "es": "Flujo de energía"
       },
       "description": {
         "en": "Live powers, today’s balance and the power chart, with a refresh button.",
-        "fr": "Puissances en direct, bilan du jour et courbe de puissance, avec un bouton Actualiser."
+        "fr": "Puissances en direct, bilan du jour et courbe de puissance, avec un bouton Actualiser.",
+        "de": "Live-Leistungen, Tagesbilanz und Leistungskurve, mit einer Schaltfläche zum Aktualisieren.",
+        "es": "Potencias en directo, balance del día y curva de potencia, con un botón Actualizar."
       },
       "icon": "sun",
       "settings": [
@@ -237,11 +303,15 @@
           "type": "select",
           "label": {
             "en": "Chart period",
-            "fr": "Période du graphique"
+            "fr": "Période du graphique",
+            "de": "Diagrammzeitraum",
+            "es": "Período del gráfico"
           },
           "description": {
             "en": "History window of the power chart.",
-            "fr": "Fenêtre d’historique de la courbe de puissance."
+            "fr": "Fenêtre d’historique de la courbe de puissance.",
+            "de": "Verlaufszeitraum der Leistungskurve.",
+            "es": "Ventana de historial de la curva de potencia."
           },
           "required": false,
           "default": "last-day",
@@ -250,14 +320,18 @@
               "value": "last-day",
               "label": {
                 "en": "Last 24 hours",
-                "fr": "Dernières 24 heures"
+                "fr": "Dernières 24 heures",
+                "de": "Letzte 24 Stunden",
+                "es": "Últimas 24 horas"
               }
             },
             {
               "value": "last-week",
               "label": {
                 "en": "Last week",
-                "fr": "Dernière semaine"
+                "fr": "Dernière semaine",
+                "de": "Letzte Woche",
+                "es": "Última semana"
               }
             }
           ]
@@ -269,11 +343,15 @@
       "key": "production",
       "label": {
         "en": "Solar production",
-        "fr": "Production solaire"
+        "fr": "Production solaire",
+        "de": "Solarproduktion",
+        "es": "Producción solar"
       },
       "description": {
         "en": "Production today, this month, this year and lifetime, with the PV power curve.",
-        "fr": "Production du jour, du mois, de l'année et totale, avec la courbe de puissance."
+        "fr": "Production du jour, du mois, de l'année et totale, avec la courbe de puissance.",
+        "de": "Produktion heute, diesen Monat, dieses Jahr und gesamt, mit der PV-Leistungskurve.",
+        "es": "Producción de hoy, del mes, del año y total, con la curva de potencia fotovoltaica."
       },
       "icon": "trending-up",
       "settings": [
@@ -282,11 +360,15 @@
           "type": "select",
           "label": {
             "en": "Chart period",
-            "fr": "Période du graphique"
+            "fr": "Période du graphique",
+            "de": "Diagrammzeitraum",
+            "es": "Período del gráfico"
           },
           "description": {
             "en": "History window of the power chart.",
-            "fr": "Fenêtre d’historique de la courbe de puissance."
+            "fr": "Fenêtre d’historique de la courbe de puissance.",
+            "de": "Verlaufszeitraum der Leistungskurve.",
+            "es": "Ventana de historial de la curva de potencia."
           },
           "required": false,
           "default": "last-day",
@@ -295,21 +377,27 @@
               "value": "last-day",
               "label": {
                 "en": "Last 24 hours",
-                "fr": "Dernières 24 heures"
+                "fr": "Dernières 24 heures",
+                "de": "Letzte 24 Stunden",
+                "es": "Últimas 24 horas"
               }
             },
             {
               "value": "last-week",
               "label": {
                 "en": "Last week",
-                "fr": "Dernière semaine"
+                "fr": "Dernière semaine",
+                "de": "Letzte Woche",
+                "es": "Última semana"
               }
             },
             {
               "value": "last-month",
               "label": {
                 "en": "Last month",
-                "fr": "Dernier mois"
+                "fr": "Dernier mois",
+                "de": "Letzter Monat",
+                "es": "Último mes"
               }
             }
           ]
@@ -320,11 +408,15 @@
       "key": "battery",
       "label": {
         "en": "Battery",
-        "fr": "Batterie"
+        "fr": "Batterie",
+        "de": "Batterie",
+        "es": "Batería"
       },
       "description": {
         "en": "Charge level, battery power and state, stored energy and temperature.",
-        "fr": "Niveau de charge, puissance et état de la batterie, énergie stockée et température."
+        "fr": "Niveau de charge, puissance et état de la batterie, énergie stockée et température.",
+        "de": "Ladestand, Leistung und Status der Batterie, gespeicherte Energie und Temperatur.",
+        "es": "Nivel de carga, potencia y estado de la batería, energía almacenada y temperatura."
       },
       "icon": "battery-charging"
     }

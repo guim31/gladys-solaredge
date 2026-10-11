@@ -20,7 +20,14 @@ import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
 import { connectionFingerprint, isConfigured, normalizeConfig } from './src/config.js';
 import { SolarEdgeService } from './src/solaredge/service.js';
 import { ERROR_CODES, SolarEdgeError } from './src/solaredge/client.js';
-import { ACTIONS, NOT_CONFIGURED_MESSAGE, WIDGET_ACTIONS, describeError } from './src/actions.js';
+import {
+  ACTIONS,
+  MISSING_KEY_STATUS,
+  NOT_CONFIGURED_MESSAGE,
+  WIDGET_ACTIONS,
+  describeError,
+  quotaNearlySpentStatus,
+} from './src/actions.js';
 import { SnapshotPublisher } from './src/publisher.js';
 import {
   WIDGET,
@@ -130,7 +137,7 @@ gladys.onPoll(async (device) => {
 for (const [key, handler] of Object.entries(ACTIONS)) {
   gladys.onAction(key, async (fields) => {
     if (!service) {
-      // Resolved, not thrown: a thrown error is a single string, this is bilingual.
+      // Resolved, not thrown: a thrown error is a single string, this is multilingual.
       return NOT_CONFIGURED_MESSAGE;
     }
     return handler(gladys, { fields, config, service, refreshAll });
@@ -247,10 +254,7 @@ async function bootstrap({ force = false } = {}) {
 
   if (!isConfigured(config)) {
     logger.warn('No SolarEdge API key configured yet');
-    await setStatus(false, {
-      en: 'Paste your SolarEdge Monitoring API key in the settings above.',
-      fr: "Renseignez votre clé d'API SolarEdge Monitoring dans les réglages ci-dessus.",
-    });
+    await setStatus(false, MISSING_KEY_STATUS);
     return;
   }
 
@@ -265,10 +269,7 @@ async function bootstrap({ force = false } = {}) {
   const usage = service.usage;
   if (usage.remaining <= BUDGET_RESERVE) {
     logger.warn(`Skipping detection: only ${usage.remaining} SolarEdge request(s) left today`);
-    await setStatus(false, {
-      en: `SolarEdge daily quota nearly spent (${usage.count}/${usage.limit}). Detection resumes tomorrow, or raise the refresh interval.`,
-      fr: `Quota SolarEdge presque épuisé (${usage.count}/${usage.limit}). La détection reprendra demain ; augmentez l'intervalle de rafraîchissement.`,
-    });
+    await setStatus(false, quotaNearlySpentStatus(usage));
     scheduleBootstrapRetry({ code: ERROR_CODES.QUOTA_EXCEEDED });
     return;
   }
@@ -315,7 +316,7 @@ async function refreshAll() {
     await bootstrap({ force: true });
   }
   if (!context) {
-    // A coded error: describeError turns it into a bilingual message, for the
+    // A coded error: describeError turns it into a multilingual message, for the
     // Configuration screen and for the widget toast alike.
     throw new SolarEdgeError('The integration has not reached SolarEdge yet.', {
       code: ERROR_CODES.NOT_READY,

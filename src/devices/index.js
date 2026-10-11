@@ -20,6 +20,7 @@
 // -----------------------------------------------------------------------------
 
 import { DEVICE_TRANSPORTS } from '@gladysassistant/integration-sdk';
+import { QUOTA_TRANSPORT_MESSAGE } from '../actions.js';
 import { production } from './production.js';
 import { consumption } from './consumption.js';
 import { grid } from './grid.js';
@@ -77,10 +78,7 @@ function transportFor({ error }) {
     return {
       transport: DEVICE_TRANSPORTS.CLOUD,
       degraded: true,
-      message: {
-        en: 'SolarEdge daily request quota reached: values refresh again tomorrow.',
-        fr: 'Quota de requêtes SolarEdge atteint : les valeurs repartiront demain.',
-      },
+      message: QUOTA_TRANSPORT_MESSAGE,
     };
   }
   return { transport: DEVICE_TRANSPORTS.UNREACHABLE };
