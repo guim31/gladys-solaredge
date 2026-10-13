@@ -78,11 +78,13 @@ Two rules keep them cheap:
 SolarEdge allows **300 API requests per day and per site**, then answers 429
 until the next day. Two decisions follow from it:
 
-1. **One shared snapshot per cycle.** Gladys polls each device independently.
-   Instead of letting four devices fire four sets of calls, the first device
-   of a cycle triggers one refresh and the others read the cached result
-   (`src/solaredge/service.js`, with in-flight de-duplication). A cycle costs
-   **2 requests whatever the number of devices**.
+1. **One shared snapshot per cycle.** The integration refreshes on its own
+   timer, at the "Refresh interval" (`src/poller.js`), and Gladys may also
+   poll each device independently (`onPoll`, kept as a fallback). Instead of
+   letting four devices fire four sets of calls, one refresh serves them all
+   and every other read gets the cached result (`src/solaredge/service.js`,
+   with in-flight de-duplication). A cycle costs **2 requests whatever the
+   number of devices**.
 2. **A client-side budget.** `SolarEdgeClient` counts its own requests and
    refuses to go past the configured budget (300/day by default), so a
    too-aggressive polling interval degrades the refresh rate instead of
@@ -111,7 +113,8 @@ metered site).
 │  │  ├─ battery.js
 │  │  └─ helpers.js                  #   state batches that skip missing readings
 │  ├─ widgets.js                     # dashboard widget contents (pure builders)
-│  ├─ publisher.js                   # which snapshot a Gladys tick publishes
+│  ├─ poller.js                      # internal polling timer (states without Gladys's onPoll)
+│  ├─ publisher.js                   # which snapshot a tick publishes
 │  ├─ actions.js                     # Configuration + widget buttons, error wording
 │  └─ config.js                      # config defaults + normalization
 ├─ docs/{en,fr}.md                   # user documentation, re-hosted by Gladys

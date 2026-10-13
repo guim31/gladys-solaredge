@@ -194,9 +194,9 @@ quota is reached around midday and the values freeze until tomorrow. The
 
 > **Why do the devices say "every minute"?** Gladys can only wake an
 > integration at a fixed set of cadences, the slowest of which is one minute.
-> That wake-up is just a tick: it costs no request. Your **Refresh interval**
-> setting is what decides whether a tick actually reads SolarEdge or reuses the
-> last cached reading.
+> That wake-up is just a tick: it costs no request. The integration reads
+> SolarEdge on its own, at your **Refresh interval**, and publishes the values
+> itself; a tick from Gladys only reuses the last cached reading.
 
 ## Revenue today
 

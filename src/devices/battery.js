@@ -182,7 +182,7 @@ export const battery = {
       text: STATE_LABELS[battery.state] ?? battery.state,
     });
 
-    logger.info(`Battery: ${level ?? '?'}%, ${battery.power ?? '?'} W (${battery.state})`);
+    logger.debug(`Battery: ${level ?? '?'}%, ${battery.power ?? '?'} W (${battery.state})`);
     return states;
   },
 };

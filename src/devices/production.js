@@ -150,7 +150,7 @@ export const production = {
 
     const states = await publishStates(gladys, entries);
 
-    logger.info(`Production: ${power ?? '?'} W, ${overview?.energyToday ?? '?'} kWh today`);
+    logger.debug(`Production: ${power ?? '?'} W, ${overview?.energyToday ?? '?'} kWh today`);
     return states;
   },
 };

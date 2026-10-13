@@ -2,7 +2,7 @@
 
 Production solaire, consommation, échanges réseau et batterie depuis SolarEdge.
 
-Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.14.0, `gladys_version` `>=5.1.0`). Mainteneur : Guilhem (`guim31`).
+Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.15.0, `gladys_version` `>=5.1.0`). Mainteneur : Guilhem (`guim31`).
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
 
@@ -31,6 +31,32 @@ doit mettre à jour, cliquer « Mettre à jour » dans Découverte et supprimer 
 
 Les réponses réelles de ce site sont la fixture `INVERTER_ONLY_*` (`test/inverterOnly.test.js`).
 Jamais testé en réel : un site avec compteur, avec batterie, avec tarif.
+
+## Maintenance SDK 0.15 (13/10/2026, branche `chore/sdk-0.15`, après la 1.4.0)
+
+Patch sans changement de clé, d'`external_id`, de type ni de format : SDK ^0.15.0, minuteur de
+polling interne, logs réduits. `gladys_version` reste `>=5.1.0` (aucune fonction de la 5.2).
+
+- **Polling** (Gladys#3198) : les appareils sont publiés avec `should_poll: true` depuis la 1.1.0,
+  mais le cœur ne lit ces champs qu'à la création et peut changer ses règles. Les états viennent
+  donc de `SnapshotPoller` (`src/poller.js`), un minuteur interne à l'« Intervalle de
+  rafraîchissement » de la config, démarré à chaque bootstrap réussi, arrêté à la déconnexion.
+  Il ne sert que les appareils **créés** (`gladys.devices` du SDK), ne coûte rien sans appareil,
+  et passe par le même `SnapshotPublisher` et le même cache que `onPoll`, gardé en repli : le
+  premier qui livre une lecture la publie, l'autre ne fait rien. `onDeviceCreated` /
+  `onDeviceUpdated` oublient l'appareil (`publisher.forget`) et lancent un cycle sur le cache.
+  Cycles sérialisés, `tick` réserve la lecture avant de publier (minuteur et `onPoll` simultanés),
+  numéro de génération contre une double chaîne si `start()` tombe pendant un cycle, plancher de
+  60 s. Un bootstrap qui échoue avec un site déjà connu relance le minuteur. Testé sans aucun
+  `onPoll` (`test/poller.test.js`).
+- **Logs** : au niveau info, seulement le cycle de vie (démarrage, détection, appareils publiés,
+  actions de l'utilisateur, perte et retour de SolarEdge). Les valeurs de chaque cycle sont en
+  `debug`. Erreurs dédupliquées : `SolarEdgeService#failed`/`#recovered` par endpoint, le badge
+  de transport (`reportHealth`) pour un cycle entier en échec, `logBootstrapFailure` pour la
+  boucle de réessai de l'initialisation. Un test vérifie qu'un cycle normal n'écrit rien sur la
+  console au niveau info.
+- Faux Gladys maison des tests gardé (simple, pas fragile) ; `GLADYS_POLL_FREQUENCY` vaut
+  désormais `DEVICE_POLL_FREQUENCIES.EVERY_MINUTES` (même valeur, 60000 ms).
 
 ## Choix de conception (mesures)
 
@@ -66,8 +92,8 @@ Jamais testé en réel : un site avec compteur, avec batterie, avec tarif.
 - Un rafraîchissement forcé (`refreshAll`, bouton du widget) publie sans marquer le snapshot comme
   publié (`src/publisher.js`) : Gladys jette les états d'un appareil pas encore ajouté, et le tick
   suivant doit les republier. Un point en double coûte moins qu'un quart d'heure sans valeur.
-- `onPoll` ignore un appareil dont le blueprint n'est plus disponible (un Réseau créé par la 1.1.0
-  sur un site sans compteur).
+- `onPoll` et le minuteur ignorent un appareil dont le blueprint n'est plus disponible (un Réseau
+  créé par la 1.1.0 sur un site sans compteur).
 
 ## Choix de conception (widgets)
 
@@ -173,7 +199,10 @@ Vérifiés dans le code du cœur ou payés sur une intégration publiée. Ils va
   `poll_frequency` vaut une valeur de la liste fixe (1000, 2000, 10000, 15000, 30000, 60000 ms).
   Publier seulement `poll_frequency` donne un appareil accepté mais jamais interrogé. Pour une
   cadence hors liste, publier `should_poll: false` et pousser les états depuis le conteneur, en
-  gardant un `onPoll` de repli.
+  gardant un `onPoll` de repli. Et ces deux champs ne sont lus **qu'à la création** de l'appareil
+  (Gladys#3198, 5.2.0) : les republier ne corrige jamais un appareil déjà créé, et le bouton
+  « Mettre à jour » n'apparaît que si les fonctionnalités changent. Ne jamais compter sur
+  `onPoll` seul : un minuteur interne publie, `onPoll` reste un repli sans double lecture.
 - **`min` et `max` sont NOT NULL** dans `t_device_feature`, y compris pour `text/text` : sans eux,
   « Ajouter à Gladys » échoue en HTTP 422. Mettre 0/0, comme Zigbee2MQTT.
 - `level-sensor/decimal` n'existe pas côté serveur. `light-sensor/binary` n'a pas de libellé dans

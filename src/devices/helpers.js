@@ -2,7 +2,11 @@
 // Small helpers shared by the device modules.
 // -----------------------------------------------------------------------------
 
-import { DEVICE_FEATURE_CATEGORIES, DEVICE_FEATURE_TYPES } from '@gladysassistant/integration-sdk';
+import {
+  DEVICE_FEATURE_CATEGORIES,
+  DEVICE_FEATURE_TYPES,
+  DEVICE_POLL_FREQUENCIES,
+} from '@gladysassistant/integration-sdk';
 
 /**
  * How often Gladys wakes us up for a device, in MILLISECONDS.
@@ -28,8 +32,13 @@ import { DEVICE_FEATURE_CATEGORIES, DEVICE_FEATURE_TYPES } from '@gladysassistan
  * A device carrying `poll_frequency` alone is accepted by the discovery
  * endpoint, created without complaint, and then simply never polled — every
  * feature stays on "no recent value" forever, with nothing in the logs.
+ *
+ * Both fields are only read when the user CREATES the device, and the core
+ * then polls on its own rules (GladysAssistant/Gladys#3198). So this tick is
+ * only a fallback: the states come from the integration's own timer
+ * (src/poller.js), and a tick finds the reading already published.
  */
-export const GLADYS_POLL_FREQUENCY = 60_000;
+export const GLADYS_POLL_FREQUENCY = DEVICE_POLL_FREQUENCIES.EVERY_MINUTES;
 
 /**
  * Category and type of every "energy since midnight" total that is not the
