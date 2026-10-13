@@ -100,7 +100,7 @@ export const consumption = {
       [ids.feature(FEATURE.SELF_CONSUMPTION_TODAY), energy?.selfConsumption],
     ]);
 
-    logger.info(`Consumption: ${flow?.load ?? '?'} W, ${energy?.consumption ?? '?'} kWh today`);
+    logger.debug(`Consumption: ${flow?.load ?? '?'} W, ${energy?.consumption ?? '?'} kWh today`);
     return states;
   },
 };

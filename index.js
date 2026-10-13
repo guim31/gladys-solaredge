@@ -8,7 +8,9 @@
 //   2. register the event handlers BEFORE connect();
 //   3. once connected, bootstrap the site (resolve it, detect what it has,
 //      publish the matching devices) and keep retrying until it works;
-//   4. serve the dashboard widgets from the snapshot already in memory — a
+//   4. publish the states on the integration's own timer (src/poller.js),
+//      with Gladys's `onPoll` kept as a fallback;
+//   5. serve the dashboard widgets from the snapshot already in memory — a
 //      widget never triggers a SolarEdge request (src/widgets.js).
 //
 // Environment variables injected by the Gladys supervisor:
@@ -29,6 +31,7 @@ import {
   quotaNearlySpentStatus,
 } from './src/actions.js';
 import { SnapshotPublisher } from './src/publisher.js';
+import { SnapshotPoller } from './src/poller.js';
 import {
   WIDGET,
   buildBatteryContent,
@@ -58,6 +61,20 @@ let retryDelay = 0;
 let lastTransportKey = null;
 // Which snapshot each device already published on a tick (src/publisher.js).
 const publisher = new SnapshotPublisher(gladys);
+// The internal polling timer: the source of the states (src/poller.js).
+const poller = new SnapshotPoller(gladys, publisher, () => ({ context, service }), {
+  onSuccess: async (snapshot) => {
+    nudgeWidgets(snapshot);
+    await reportHealth(null);
+  },
+  onError: (err) => reportHealth(err),
+});
+// Devices `onPoll` already warned about, so an unknown device is one line,
+// not one per minute.
+const unknownPolledDevices = new Set();
+// The last initialization failure logged, so a retry loop failing the same
+// way writes one error line, not one per attempt.
+let lastBootstrapFailure = null;
 // Timestamp of the last snapshot the widgets were nudged for: one nudge per
 // SolarEdge reading, not one per device publishing it.
 let lastNudgedSnapshot = null;
@@ -80,7 +97,7 @@ gladys.onScanRequest(async () => {
       // when the re-probe below is slow or fails outright.
       const devices = buildDiscoveredDevices(gladys, context);
       await gladys.publishDiscoveredDevices(devices);
-      logger.info(`Scan answered immediately with ${devices.length} known device(s)`);
+      logger.debug(`Scan answered immediately with ${devices.length} known device(s)`);
     }
     // Then re-probe: a battery or a consumption meter may have been added to
     // the installation since the last detection.
@@ -93,9 +110,11 @@ gladys.onScanRequest(async () => {
   }
 });
 
-// --- Polling: Gladys asks to refresh a device --------------------------------
-// Every device polls on its own schedule, but they all read ONE snapshot: the
-// first device of a cycle triggers the SolarEdge calls, the others reuse them.
+// --- Polling fallback: Gladys asks to refresh a device -----------------------
+// The internal timer (src/poller.js) is what publishes the states: Gladys only
+// polls a device created with `should_poll: true` (Gladys#3198). When it does,
+// this handler reads the same shared snapshot and the publisher skips what the
+// timer already delivered: no extra SolarEdge request, no duplicate state.
 gladys.onPoll(async (device) => {
   if (!context) {
     logger.debug('onPoll ignored: the integration is not initialized yet');
@@ -103,7 +122,10 @@ gladys.onPoll(async (device) => {
   }
   const blueprint = findBlueprintByDevice(gladys, context, device);
   if (!blueprint) {
-    logger.warn(`onPoll ignored: unknown device ${device.external_id}`);
+    if (!unknownPolledDevices.has(device.external_id)) {
+      unknownPolledDevices.add(device.external_id);
+      logger.warn(`onPoll ignored: unknown device ${device.external_id}`);
+    }
     return;
   }
   if (!blueprint.isAvailable(context.capabilities)) {
@@ -132,6 +154,17 @@ gladys.onPoll(async (device) => {
     throw err;
   }
 });
+
+// --- A device created or updated from the Discovery tab -----------------------
+// Deliver the current reading at once instead of at the next timer cycle. The
+// device may hold new features ("Update"), so what it published before is
+// forgotten. Reads the cached snapshot: no request while it is fresh.
+async function publishToNewDevice(device) {
+  publisher.forget(device.external_id);
+  await poller.runOnce();
+}
+gladys.onDeviceCreated(publishToNewDevice);
+gladys.onDeviceUpdated(publishToNewDevice);
 
 // --- Manifest actions: buttons in the Configuration screen -------------------
 for (const [key, handler] of Object.entries(ACTIONS)) {
@@ -238,6 +271,8 @@ gladys.on('connected', async () => {
 
 gladys.on('disconnected', () => {
   cancelBootstrapRetry();
+  // Restarted by the bootstrap of the next connection.
+  poller.stop();
 });
 
 /**
@@ -268,7 +303,11 @@ async function bootstrap({ force = false } = {}) {
   // — including the buttons the user would press to diagnose it.
   const usage = service.usage;
   if (usage.remaining <= BUDGET_RESERVE) {
-    logger.warn(`Skipping detection: only ${usage.remaining} SolarEdge request(s) left today`);
+    logBootstrapFailure(
+      'budget',
+      `Skipping detection: only ${usage.remaining} SolarEdge request(s) left today`,
+      'warn',
+    );
     await setStatus(false, quotaNearlySpentStatus(usage));
     scheduleBootstrapRetry({ code: ERROR_CODES.QUOTA_EXCEEDED });
     return;
@@ -294,16 +333,40 @@ async function bootstrap({ force = false } = {}) {
     await reportHealth(null);
     await setStatus(true);
     retryDelay = 0;
+    lastBootstrapFailure = null;
+    // The states now come from our own timer, at the user's refresh interval.
+    poller.start(config.poll_frequency * 1000);
   } catch (err) {
     // `err.code` is the SolarEdge failure class, `err.status` the HTTP status:
     // both matter to tell "bad key" from "quota spent" from "Gladys refused
     // the payload" when reading the logs.
-    logger.error(
-      `Initialization failed [${err.code ?? 'no-code'}${err.status ? ` HTTP ${err.status}` : ''}]: ${err.message}`,
+    const failure = `${err.code ?? 'no-code'}${err.status ? ` HTTP ${err.status}` : ''}`;
+    logBootstrapFailure(
+      failure,
+      `Initialization failed [${failure}]: ${err.message}`,
+      'error',
       err,
     );
     await setStatus(false, describeError(err));
     scheduleBootstrapRetry(err);
+  }
+}
+
+/**
+ * Log an initialization failure once: the retry loop failing the same way
+ * again goes to `debug`. A different failure, or a success in between, logs
+ * again.
+ */
+function logBootstrapFailure(key, message, level, err) {
+  if (key === lastBootstrapFailure) {
+    logger.debug(message);
+    return;
+  }
+  lastBootstrapFailure = key;
+  if (err) {
+    logger[level](message, err);
+  } else {
+    logger[level](message);
   }
 }
 
@@ -345,6 +408,13 @@ async function reportHealth(error) {
   if (key === lastTransportKey) {
     return;
   }
+  // The badge only moves on a change: so do the logs — one line when
+  // SolarEdge stops answering, one when it is back, none per cycle.
+  if (error) {
+    logger.warn(`SolarEdge unreachable [${key}]: ${error.message}`);
+  } else if (lastTransportKey && lastTransportKey !== 'ok') {
+    logger.info('SolarEdge answers again');
+  }
   lastTransportKey = key;
 
   try {
@@ -380,7 +450,7 @@ function scheduleBootstrapRetry(err) {
       ? RETRY_MIN_DELAY
       : Math.min(retryDelay * 2, RETRY_MAX_DELAY);
 
-  logger.info(`Next initialization attempt in ${Math.round(retryDelay / 60_000)} min`);
+  logger.debug(`Next initialization attempt in ${Math.round(retryDelay / 60_000)} min`);
   retryTimer = setTimeout(() => {
     retryTimer = null;
     bootstrap().catch((retryErr) => logger.error('Retry failed', retryErr));
@@ -402,6 +472,7 @@ function cancelBootstrapRetry() {
 gladys.handleShutdown((signal) => {
   logger.info(`Received ${signal} -> graceful shutdown`);
   cancelBootstrapRetry();
+  poller.stop();
 });
 
 // --- Startup -----------------------------------------------------------------

@@ -67,6 +67,9 @@ export class SolarEdgeService {
     this.importFailedDay = null; // a day whose history failed: not retried
     this.inFlight = null;
     this.lastError = null;
+    // Endpoints whose last call failed: a failure is logged once, at `warn`,
+    // and its recovery once, at `info` — not one line per refresh cycle.
+    this.failing = new Set();
   }
 
   /** Apply a configuration change that does NOT require a new client. */
@@ -244,11 +247,17 @@ export class SolarEdgeService {
     const flow =
       flowResult.status === 'fulfilled'
         ? parsePowerFlow(flowResult.value)
-        : (logWarn('currentPowerFlow', flowResult.reason), this.snapshot?.flow ?? null);
+        : (this.#failed('currentPowerFlow', flowResult.reason), this.snapshot?.flow ?? null);
     const overview =
       overviewResult.status === 'fulfilled'
         ? parseOverview(overviewResult.value)
-        : (logWarn('overview', overviewResult.reason), this.snapshot?.overview ?? null);
+        : (this.#failed('overview', overviewResult.reason), this.snapshot?.overview ?? null);
+    if (flowResult.status === 'fulfilled') {
+      this.#recovered('currentPowerFlow');
+    }
+    if (overviewResult.status === 'fulfilled') {
+      this.#recovered('overview');
+    }
 
     const energy = await this.#refreshEnergyDetails(siteId, timeZone, now);
     const storage = await this.#refreshStorageData(siteId, timeZone, now, flow);
@@ -287,9 +296,10 @@ export class SolarEdgeService {
       });
       this.energyAt = now.getTime();
       this.energyDay = siteDay(now, timeZone);
+      this.#recovered('energyDetails');
       return parseEnergyDetails(details);
     } catch (err) {
-      logWarn('energyDetails', err);
+      this.#failed('energyDetails', err);
       // Keep the previous breakdown: a missed refresh is better than a hole.
       return this.snapshot?.energy ?? null;
     }
@@ -328,9 +338,10 @@ export class SolarEdgeService {
       // Not retried before tomorrow: a history SolarEdge keeps refusing would
       // otherwise spend requests at every refresh, up to the whole budget.
       this.importFailedDay = day;
-      logWarn('energyDetails (grid import index, retried tomorrow)', err);
+      this.#failed('energyDetails (grid import index)', err);
       return null;
     }
+    this.#recovered('energyDetails (grid import index)');
     // Never backwards: a day SolarEdge revises down by a few Wh must not read
     // as a meter reset (the core skips negative deltas, then counts the jump
     // back up as consumption).
@@ -403,6 +414,24 @@ export class SolarEdgeService {
     return parseEnergyDetails(details)?.purchased ?? 0;
   }
 
+  /** A partial failure: logged once until the endpoint answers again. */
+  #failed(endpoint, err) {
+    const message = `SolarEdge ${endpoint} failed: ${err?.message ?? err}`;
+    if (this.failing.has(endpoint)) {
+      logger.debug(message);
+      return;
+    }
+    this.failing.add(endpoint);
+    logger.warn(message);
+  }
+
+  /** The recovery line matching the single failure line above. */
+  #recovered(endpoint) {
+    if (this.failing.delete(endpoint)) {
+      logger.info(`SolarEdge ${endpoint} answers again`);
+    }
+  }
+
   /** Optional battery telemetry (stored energy, temperature). */
   async #refreshStorageData(siteId, timeZone, now, flow) {
     if (!this.config.storage_details || !flow?.battery) {
@@ -416,9 +445,10 @@ export class SolarEdgeService {
       const { startTime, endTime } = siteRecentRange(now, timeZone, 60);
       const storageData = await this.client.getStorageData(siteId, { startTime, endTime });
       this.storageAt = now.getTime();
+      this.#recovered('storageData');
       return parseStorageData(storageData);
     } catch (err) {
-      logWarn('storageData', err);
+      this.#failed('storageData', err);
       return this.snapshot?.storage ?? null;
     }
   }
@@ -432,8 +462,4 @@ function hasMeter(energy, key) {
 /** A real number, as opposed to "SolarEdge did not report this". 0 counts. */
 function hasValue(value) {
   return typeof value === 'number' && Number.isFinite(value);
-}
-
-function logWarn(endpoint, err) {
-  logger.warn(`SolarEdge ${endpoint} failed: ${err?.message ?? err}`);
 }

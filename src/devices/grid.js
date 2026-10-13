@@ -131,7 +131,7 @@ export const grid = {
     }
     const states = await publishStates(gladys, entries);
 
-    logger.info(
+    logger.debug(
       `Grid: ${flow?.grid ?? '?'} W, +${energy?.purchased ?? '?'} / -${energy?.feedIn ?? '?'} kWh today`,
     );
     return states;

@@ -2,9 +2,10 @@
 // When to publish a snapshot to Gladys — the bookkeeping index.js relies on,
 // kept here so it can be tested without a running SDK.
 //
-// Gladys ticks every device every minute (the slowest poll_frequency its enum
-// allows), but SolarEdge is only read every "Refresh interval" seconds. Most
-// ticks therefore hand back the very same snapshot: re-publishing it would
+// A tick comes from the internal timer (src/poller.js) or, as a fallback,
+// from Gladys, which polls every device every minute (the slowest
+// poll_frequency its enum allows) — but SolarEdge is only read every "Refresh
+// interval" seconds. Most ticks therefore hand back the very same snapshot: re-publishing it would
 // write 1440 identical points per feature per day into the history for
 // nothing — and the host API rate-limits states at 300/minute. So a tick only
 // publishes a snapshot that device has not published yet.
@@ -30,7 +31,7 @@ export class SnapshotPublisher {
   }
 
   /**
-   * A Gladys tick for one device: publish the snapshot unless this device
+   * A tick for one device (timer or Gladys poll): publish the snapshot unless this device
    * already published it on an earlier tick.
    * @returns {Promise<boolean>} whether anything was published
    */
@@ -41,6 +42,14 @@ export class SnapshotPublisher {
     await blueprint.onPoll(this.gladys, context, snapshot);
     this.lastPublished.set(device.external_id, snapshot.fetchedAt);
     return true;
+  }
+
+  /**
+   * Forget what a device published: the next tick publishes the current
+   * snapshot to it again (a device just created or updated in Gladys).
+   */
+  forget(externalId) {
+    this.lastPublished.delete(externalId);
   }
 
   /**
