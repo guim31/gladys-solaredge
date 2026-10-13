@@ -8,8 +8,8 @@
     "de": "Solarproduktion, Hausverbrauch, Netzbezug und Einspeisung sowie Batteriespeicher von SolarEdge.",
     "es": "Producción solar, consumo de la casa, intercambios con la red y batería desde SolarEdge."
   },
-  "version": "1.4.0",
-  "docker_image": "ghcr.io/guim31/gladys-solaredge:1.4.0",
+  "version": "1.4.1",
+  "docker_image": "ghcr.io/guim31/gladys-solaredge:1.4.1",
   "gladys_version": ">=5.1.0",
   "categories": ["energy"],
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-solaredge/main/cover.jpg",
