@@ -243,6 +243,8 @@ function nudgeWidgets(snapshot) {
 // --- Configuration updated by the user ---------------------------------------
 gladys.onConfigUpdated(async (newConfig) => {
   logger.info('onConfigUpdated -> new configuration received');
+  // A new setting deserves its own error line, even if it fails like the last one.
+  lastBootstrapFailure = null;
   const previousFingerprint = connectionFingerprint(config);
   config = normalizeConfig(newConfig);
 
@@ -329,6 +331,9 @@ async function bootstrap({ force = false } = {}) {
       `Published ${devices.length} device(s) for site ${siteId}: ${devices.map((d) => d.name).join(', ')}`,
     );
 
+    if (lastTransportKey && lastTransportKey !== 'ok') {
+      logger.info('SolarEdge answers again');
+    }
     lastTransportKey = null;
     await reportHealth(null);
     await setStatus(true);
@@ -349,6 +354,11 @@ async function bootstrap({ force = false } = {}) {
     );
     await setStatus(false, describeError(err));
     scheduleBootstrapRetry(err);
+    // A failed re-detection (a reconnection while SolarEdge hiccups) keeps
+    // the site known: keep publishing for it in the meantime.
+    if (context && !poller.running) {
+      poller.start(config.poll_frequency * 1000);
+    }
   }
 }
 

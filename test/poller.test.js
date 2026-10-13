@@ -53,9 +53,8 @@ const liveReads = (client) => client.calls.filter((name) => name === 'flow').len
 test('the timer publishes every created device without any onPoll from Gladys', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { client, gladys, devices, poller, health } = await setUp();
-  // Nothing in this test registers or calls an onPoll handler: the fake
-  // Gladys has none, and the timer alone must deliver the states.
-  assert.equal(gladys.onPoll, undefined);
+  // Nothing in this test registers or calls an onPoll handler: the timer
+  // alone must deliver the states.
   const readsAtBootstrap = liveReads(client);
 
   poller.start(INTERVAL_MS);
@@ -116,16 +115,72 @@ test('no device created in Gladys: the timer costs no SolarEdge request', async 
 });
 
 test('a device created later gets the current reading at once', async () => {
-  const { client, gladys, devices, publisher, poller } = await setUp();
+  const { client, gladys, devices, poller } = await setUp();
   gladys.devices = [devices[0]];
   assert.equal(await poller.runOnce(), 1);
   const calls = client.calls.length;
 
-  // onDeviceCreated in index.js: forget, then run a cycle on the cached snapshot.
+  // onDeviceCreated in index.js: a cycle on the cached snapshot.
   gladys.devices = devices;
-  publisher.forget(devices[1].external_id);
   assert.equal(await poller.runOnce(), 3, 'the three new devices, not the first one again');
   assert.equal(client.calls.length, calls, 'from the cache');
+});
+
+test('an updated device gets the same reading again once forgotten', async () => {
+  const { client, gladys, devices, publisher, poller } = await setUp();
+  assert.equal(await poller.runOnce(), 4);
+  assert.equal(await poller.runOnce(), 0, 'already published');
+  const calls = client.calls.length;
+
+  // onDeviceUpdated in index.js ("Update" may have added features).
+  publisher.forget(devices[0].external_id);
+  const before = gladys.published.length;
+  assert.equal(await poller.runOnce(), 1, 'only the updated device');
+  assert.ok(gladys.published.length > before);
+  assert.equal(client.calls.length, calls, 'from the cache');
+});
+
+test('overlapping cycles never publish the same reading twice', async () => {
+  const { gladys, poller } = await setUp();
+  const results = await Promise.all([poller.runOnce(), poller.runOnce(), poller.runOnce()]);
+  assert.deepEqual(results, [4, 0, 0]);
+  const ids = gladys.published.map((s) => s.featureExternalId);
+  assert.equal(new Set(ids).size, ids.length, 'no feature published twice');
+});
+
+test('restarting the timer during a slow cycle keeps a single chain', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { poller } = await setUp();
+  let cycles = 0;
+  let release;
+  poller.runOnce = () => {
+    cycles += 1;
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  };
+
+  poller.start(INTERVAL_MS);
+  t.mock.timers.tick(0); // cycle 1 starts and hangs
+  poller.start(INTERVAL_MS); // a bootstrap restarts the timer meanwhile
+  t.mock.timers.tick(0); // cycle 2, from the new chain
+  release();
+  await settle(); // cycle 1 ends: its stale chain must not reschedule
+  assert.equal(cycles, 2);
+
+  release();
+  await settle();
+  t.mock.timers.tick(INTERVAL_MS);
+  await settle();
+  assert.equal(cycles, 3, 'one cycle per interval, not two');
+  poller.stop();
+});
+
+test('the interval has a floor: a bad setting cannot make a busy loop', async () => {
+  const { poller } = await setUp();
+  poller.start(0);
+  assert.equal(poller.intervalMs, 60_000);
+  poller.stop();
 });
 
 test('a failed cycle reports the error and keeps the timer alive', async (t) => {

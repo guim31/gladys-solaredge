@@ -36,11 +36,21 @@ export class SnapshotPublisher {
    * @returns {Promise<boolean>} whether anything was published
    */
   async tick(blueprint, context, device, snapshot) {
-    if (this.lastPublished.get(device.external_id) === snapshot.fetchedAt) {
+    const previous = this.lastPublished.get(device.external_id);
+    if (previous === snapshot.fetchedAt) {
       return false;
     }
-    await blueprint.onPoll(this.gladys, context, snapshot);
+    // Reserved BEFORE publishing: the timer and a Gladys poll landing together
+    // must not both deliver the same reading. Released if publishing fails.
     this.lastPublished.set(device.external_id, snapshot.fetchedAt);
+    try {
+      await blueprint.onPoll(this.gladys, context, snapshot);
+    } catch (err) {
+      if (this.lastPublished.get(device.external_id) === snapshot.fetchedAt) {
+        this.lastPublished.set(device.external_id, previous);
+      }
+      throw err;
+    }
     return true;
   }
 

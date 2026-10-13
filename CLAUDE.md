@@ -45,7 +45,10 @@ polling interne, logs réduits. `gladys_version` reste `>=5.1.0` (aucune fonctio
   et passe par le même `SnapshotPublisher` et le même cache que `onPoll`, gardé en repli : le
   premier qui livre une lecture la publie, l'autre ne fait rien. `onDeviceCreated` /
   `onDeviceUpdated` oublient l'appareil (`publisher.forget`) et lancent un cycle sur le cache.
-  Testé sans aucun `onPoll` (`test/poller.test.js`).
+  Cycles sérialisés, `tick` réserve la lecture avant de publier (minuteur et `onPoll` simultanés),
+  numéro de génération contre une double chaîne si `start()` tombe pendant un cycle, plancher de
+  60 s. Un bootstrap qui échoue avec un site déjà connu relance le minuteur. Testé sans aucun
+  `onPoll` (`test/poller.test.js`).
 - **Logs** : au niveau info, seulement le cycle de vie (démarrage, détection, appareils publiés,
   actions de l'utilisateur, perte et retour de SolarEdge). Les valeurs de chaque cycle sont en
   `debug`. Erreurs dédupliquées : `SolarEdgeService#failed`/`#recovered` par endpoint, le badge

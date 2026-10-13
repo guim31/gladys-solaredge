@@ -210,9 +210,9 @@ où vous en êtes.
 > **Pourquoi les appareils affichent « toutes les minutes » ?** Gladys ne sait
 > réveiller une intégration qu'à des cadences prédéfinies, dont la plus lente
 > est une minute. Ce réveil est un simple battement : il ne coûte aucune
-> requête. C'est votre réglage **Intervalle de rafraîchissement** qui décide si
-> le battement interroge réellement SolarEdge ou se contente de la dernière
-> lecture en cache.
+> requête. L'intégration interroge SolarEdge d'elle-même, à votre **Intervalle
+> de rafraîchissement**, et publie les valeurs elle-même ; un battement de
+> Gladys se contente de la dernière lecture en cache.
 
 ## Le revenu du jour
 

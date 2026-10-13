@@ -26,6 +26,10 @@ import { findBlueprintByDevice } from './devices/index.js';
 
 const logger = createLogger({ name: 'poller' });
 
+// Never faster than Gladys's own slowest tick: a bad setting must not turn
+// the timer into a busy loop.
+export const MIN_INTERVAL_MS = 60_000;
+
 export class SnapshotPoller {
   /**
    * @param {object} gladys the SDK instance (reads `gladys.devices`)
@@ -45,6 +49,12 @@ export class SnapshotPoller {
     this.onError = onError;
     this.timer = null;
     this.intervalMs = 0;
+    // Bumped by start/stop: a callback already running when the timer is
+    // restarted must not schedule a second chain.
+    this.generation = 0;
+    // The cycle in progress: cycles run one after the other, so two of them
+    // never publish the same reading to the same device.
+    this.current = Promise.resolve();
   }
 
   /** The created devices this installation feeds, with their blueprint. */
@@ -58,9 +68,17 @@ export class SnapshotPoller {
    * One cycle: read the shared snapshot (a SolarEdge request only when the
    * cached one is stale) and publish it for every created device that has not
    * published it yet.
+   * Cycles are serialized: a call made while one runs waits for it.
    * @returns {Promise<number>} the number of devices that published
    */
-  async runOnce() {
+  runOnce() {
+    const run = this.current.then(() => this.#cycle());
+    // Keep the chain alive whatever the outcome of this cycle.
+    this.current = run.catch(() => {});
+    return run;
+  }
+
+  async #cycle() {
     const { context, service } = this.getState();
     if (!context || !service) {
       logger.debug('Poll cycle skipped: the integration is not initialized yet');
@@ -100,11 +118,12 @@ export class SnapshotPoller {
    */
   start(intervalMs) {
     this.stop();
-    this.intervalMs = intervalMs;
-    this.#schedule(0);
+    this.intervalMs = Math.max(Number(intervalMs) || 0, MIN_INTERVAL_MS);
+    this.#schedule(0, this.generation);
   }
 
   stop() {
+    this.generation += 1;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -117,15 +136,15 @@ export class SnapshotPoller {
 
   // A chain of timeouts rather than an interval: a slow cycle (SolarEdge
   // answering in 20 s) never overlaps the next one.
-  #schedule(delay) {
+  #schedule(delay, generation) {
     this.timer = setTimeout(async () => {
       try {
         await this.runOnce();
       } catch (err) {
         logger.error('Poll cycle crashed', err);
       }
-      if (this.timer) {
-        this.#schedule(this.intervalMs);
+      if (generation === this.generation) {
+        this.#schedule(this.intervalMs, generation);
       }
     }, delay);
     // Do not hold the event loop open just for the polling timer.
