@@ -45,8 +45,13 @@ const logger = createLogger({ name: 'solaredge' });
 
 /** Live readings: the last 45 minutes hold the latest complete 15-minute bucket. */
 const LIVE_WINDOW_MS = 45 * 60_000;
-/** A failed once-a-day read is retried at most this often. */
-const DAILY_RETRY_MS = 60 * 60_000;
+/**
+ * A failed once-a-day read is retried at most this often — and not before the
+ * next site day when SolarEdge refused it outright (400, 403, 404): retrying a
+ * refusal every few hours would eat the day's budget, then the live cycles.
+ */
+const DAILY_RETRY_MS = 3 * 60 * 60_000;
+const REFUSED = new Set([400, 403, 404]);
 /**
  * Requests left aside every day for the user's own buttons ("Test the
  * connection", "Refresh now") and a restart (site details, detection).
@@ -61,7 +66,10 @@ export class SolarEdgeService {
    * @param {(tokens: object) => Promise<void>} [deps.onTokens] persists renewed OAuth tokens
    * @param {() => Date} [deps.now] injectable clock, for tests
    */
-  constructor(config, { client, onTokens, now = () => new Date() } = {}) {
+  constructor(
+    config,
+    { client, onTokens, onImportOffset = async () => {}, now = () => new Date() } = {},
+  ) {
     this.config = config;
     this.now = now;
     this.client =
@@ -91,8 +99,15 @@ export class SolarEdgeService {
     // the year, the lifetime production and the grid import index all day.
     this.daily = null; // { day, month, year, lifetime, import }
     this.dailyFailedAt = 0;
+    this.dailyRefusedDay = null;
     this.lifetimeIndex = null;
     this.importIndex = null;
+    // Continuity of the grid import index with versions 1.x (see #gridImportIndex).
+    this.importOffset = Number.isFinite(config.import_index_offset)
+      ? config.import_index_offset
+      : null;
+    this.importSeed = null;
+    this.onImportOffset = onImportOffset;
     this.inFlight = null;
     this.lastError = null;
     // Endpoints whose last call failed: a failure is logged once, at `warn`,
@@ -365,8 +380,11 @@ export class SolarEdgeService {
     };
 
     await this.#refreshDaily(siteId, day, now, energy);
-    const overview = this.#overview(energy);
-    const gridImportIndex = this.#gridImportIndex(energy);
+    // A base from another day would add yesterday's base to today's figures:
+    // after midnight, until the new reads land, those totals are unknown.
+    const daily = this.daily?.day === day ? this.daily : null;
+    const overview = this.#overview(energy, daily);
+    const gridImportIndex = await this.#gridImportIndex(energy, daily);
 
     this.snapshot = {
       flow,
@@ -408,7 +426,7 @@ export class SolarEdgeService {
    * site's midnight, and so do the bases.
    */
   async #refreshDaily(siteId, day, now, energy) {
-    if (now.getTime() - this.dailyFailedAt < DAILY_RETRY_MS) {
+    if (now.getTime() - this.dailyFailedAt < DAILY_RETRY_MS || this.dailyRefusedDay === day) {
       return;
     }
     try {
@@ -457,15 +475,18 @@ export class SolarEdgeService {
         throw err;
       }
       this.dailyFailedAt = now.getTime();
+      if (REFUSED.has(err?.status) || err?.code === ERROR_CODES.TIER) {
+        this.dailyRefusedDay = day;
+      }
       this.#failed('daily totals', err);
     }
   }
 
   /** The production totals the devices and the widgets read. */
-  #overview(energy) {
+  #overview(energy, daily) {
     const today = energy?.production ?? null;
     const plus = (base) => (hasValue(base) && hasValue(today) ? round(base + today, 2) : null);
-    const lifetime = plus(this.daily?.lifetime);
+    const lifetime = plus(daily?.lifetime);
     if (lifetime !== null) {
       // An index never goes backwards: a counter read a little late in the
       // morning must not read as a reset.
@@ -474,8 +495,8 @@ export class SolarEdgeService {
     return {
       currentPower: null,
       energyToday: today,
-      energyMonth: plus(this.daily?.month),
-      energyYear: plus(this.daily?.year),
+      energyMonth: plus(daily?.month),
+      energyYear: plus(daily?.year),
       energyLifetime: this.lifetimeIndex,
       revenueToday: null,
       revenueLifetime: null,
@@ -491,13 +512,41 @@ export class SolarEdgeService {
    * the energy PURCHASED from the grid — not the house consumption, which
    * includes the free self-consumed solar.
    */
-  #gridImportIndex(energy) {
-    const base = this.daily?.import;
+  async #gridImportIndex(energy, daily) {
+    const base = daily?.import;
     if (!hasValue(base) || !hasValue(energy?.purchased)) {
       return null;
     }
-    this.importIndex = Math.max(this.importIndex ?? 0, round(base + energy.purchased, 2));
+    const raw = round(base + energy.purchased, 2);
+    if (this.importOffset === null) {
+      // Versions 1.x published this same feature as a sum of the daily
+      // imports since commissioning; V2 reads the meter's own counter, which
+      // differs. Jumping from one to the other would bill the gap as one
+      // half-hour of consumption: the first V2 value is anchored on the last
+      // value Gladys holds, once, and the offset is kept for good.
+      this.importOffset = hasValue(this.importSeed) ? round(this.importSeed - raw, 2) : 0;
+      try {
+        await this.onImportOffset(this.importOffset);
+      } catch (err) {
+        logger.error(`Could not save the import index offset: ${err.message}`);
+      }
+    }
+    this.importIndex = Math.max(this.importIndex ?? 0, round(raw + this.importOffset, 2));
     return this.importIndex;
+  }
+
+  /**
+   * The last import index Gladys holds (the feature's `last_value`): the
+   * anchor of the first V2 value, and a floor after a restart — the counter
+   * read lags the overview by up to 15 minutes, and an index that goes down
+   * reads as a meter reset.
+   */
+  seedImportIndex(value) {
+    if (!hasValue(value)) {
+      return;
+    }
+    this.importSeed = value;
+    this.importIndex = Math.max(this.importIndex ?? 0, value);
   }
 
   /** A partial failure: logged once until the endpoint answers again. */

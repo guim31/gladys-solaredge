@@ -42,6 +42,12 @@ contenu des pages Stoplight se lit en JSON par
   totale (`lifetime-energy`) et index soutiré (`meters/lifetime-energy?meters=PURCHASED`, le
   compteur embarqué : plus de reconstitution depuis la mise en service) **une fois par jour**,
   gardés en **base** (`valeur − jour`) : `base + overview du jour` suit la journée sans requête.
+  Une base d'un autre jour n'est **jamais** utilisée (après minuit, totaux inconnus tant que la
+  relecture n'a pas réussi). Relecture en échec : 3 h plus tard ; refusée (400/403/404, `TIER`) :
+  pas avant le jour suivant (sinon les réessais mangent le budget des cycles). **Continuité de
+  l'index soutiré** : la 1.x publiait une somme reconstituée, la V2 le compteur du compteur ;
+  la première valeur V2 est ancrée sur le `last_value` de la fonctionnalité (`gladys.devices`,
+  `seedImportIndex`) et le décalage est stocké une fois (`import_index_offset`, hors schéma).
   Pas utilisés : `power-flow` et `per-destination` (Advanced, offres Business Pro+). Plus de
   revenu en V2 (capacité `revenue` toujours fausse, code du revenu laissé dormant), plus de
   drapeau « critique » batterie (Batterie faible = niveau ≤ 10 %).

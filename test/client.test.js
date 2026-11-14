@@ -207,6 +207,38 @@ test('a 429 tells the minute window from the spent month', async () => {
   );
 });
 
+test('a 429 with x-ratelimit-remaining-month: 0 is the spent month, retry-after or not', async () => {
+  const client = createClient(
+    fakeFetch(
+      errorResponse(429, '{"message":"API rate limit exceeded"}', {
+        'x-ratelimit-remaining-month': '0',
+        'retry-after': '1209600',
+      }),
+    ),
+  );
+  await assert.rejects(
+    () => client.getOverview('1'),
+    (err) => err.code === ERROR_CODES.CREDITS_EXHAUSTED,
+  );
+});
+
+test('OAuth: a busy token endpoint is no reason to reconnect', async () => {
+  for (const [status, code] of [
+    [429, ERROR_CODES.RATE_LIMITED],
+    [408, ERROR_CODES.UNAVAILABLE],
+    [503, ERROR_CODES.UNAVAILABLE],
+  ]) {
+    const client = oauthClient(fakeFetch(errorResponse(status, '{"message":"busy"}')), {
+      expiresAt: 0,
+    });
+    await assert.rejects(
+      () => client.getOverview('1'),
+      (err) => err.code === code,
+      `HTTP ${status}`,
+    );
+  }
+});
+
 test('a network failure becomes an "unavailable" error, not a crash', async () => {
   const client = createClient(fakeFetch(new TypeError('socket hang up')));
   await assert.rejects(

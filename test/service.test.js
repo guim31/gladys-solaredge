@@ -197,7 +197,7 @@ test('the lifetime production never goes backwards', async () => {
   assert.equal(next.overview.energyLifetime, 26618.84);
 });
 
-test('a failed daily read is retried an hour later, not every cycle', async () => {
+test('a failed daily read is retried three hours later, not every cycle', async () => {
   const { service, client, advance, count } = createService({
     client: createInverterOnlyClient(),
     config: { monthly_credits: 100_000 },
@@ -205,17 +205,61 @@ test('a failed daily read is retried an hour later, not every cycle', async () =
   client.dailyRequestLimit = 3000;
   client.getLifetimeEnergy = async () => {
     client.calls.push('lifetime');
-    throw new SolarEdgeError('boom', { code: ERROR_CODES.UNAVAILABLE });
+    throw new SolarEdgeError('boom', { code: ERROR_CODES.UNAVAILABLE, status: 503 });
   };
   const first = await service.getSnapshot();
   assert.equal(first.overview.energyLifetime, null);
   assert.equal(first.overview.energyToday, 9.84, 'the cycle itself went through');
-  advance(900);
-  await service.getSnapshot();
-  assert.equal(count('lifetime'), 1);
   advance(3600);
   await service.getSnapshot();
+  assert.equal(count('lifetime'), 1);
+  advance(2 * 3600);
+  await service.getSnapshot();
   assert.equal(count('lifetime'), 2);
+});
+
+test('a daily read SolarEdge refuses is not retried before the next site day', async () => {
+  const { service, client, advance, count } = createService({
+    client: createInverterOnlyClient(),
+    config: { monthly_credits: 100_000 },
+  });
+  client.dailyRequestLimit = 3000;
+  client.getEnergy = async () => {
+    client.calls.push('energy');
+    throw new SolarEdgeError('denied', { code: ERROR_CODES.UNAUTHORIZED, status: 403 });
+  };
+  await service.getSnapshot();
+  for (let i = 0; i < 6; i += 1) {
+    advance(3600); // up to 21:42 in Paris, the same site day
+    await service.getSnapshot();
+  }
+  assert.equal(count('energy'), 1);
+  advance(3 * 3600); // past the site's midnight
+  await service.getSnapshot();
+  assert.equal(count('energy'), 2);
+});
+
+test('after midnight, a missing daily read leaves the totals unknown, not yesterday-based', async () => {
+  const { service, client, advance } = createService({ client: createInverterOnlyClient() });
+  const first = await service.getSnapshot();
+  assert.equal(first.overview.energyYear, null, 'no 2024 bucket in this fixture');
+  client.getEnergy = async () => ({
+    unit: 'WH',
+    values: [{ timestamp: '2024-05-01T00:00:00+02:00', value: 50_000 }],
+  });
+  advance(1);
+  service.daily = null;
+  await service.getSnapshot({ force: true });
+  assert.equal(service.lastSnapshot.overview.energyMonth, 50);
+
+  // Next site day: the new read fails, the month must not be base + today.
+  client.getEnergy = async () => {
+    throw new SolarEdgeError('down', { code: ERROR_CODES.UNAVAILABLE, status: 503 });
+  };
+  advance(10 * 3600);
+  const next = await service.getSnapshot();
+  assert.equal(next.overview.energyMonth, null);
+  assert.equal(next.overview.energyLifetime, 26618.84, 'the lifetime index holds its last value');
 });
 
 test('capabilities follow what the installation really reports', async () => {
@@ -293,6 +337,49 @@ test('the grid import index is the meter counter, read once the capability is kn
   const later = await service.getSnapshot();
   assert.equal(later.gridImportIndex, 3457.1);
   assert.equal(count('importCounter'), 1);
+});
+
+test('the import index stays continuous with the 1.x index Gladys holds', async () => {
+  const saved = [];
+  const fake = createFakeClient();
+  let clock = START;
+  const service = new SolarEdgeService(normalizeConfig({ api_key: 'K' }), {
+    client: fake,
+    now: () => new Date(clock),
+    onImportOffset: async (offset) => saved.push(offset),
+  });
+  await service.getCapabilities();
+  // The 1.x index, rebuilt from the daily imports, was 1302.5 kWh.
+  service.seedImportIndex(1302.5);
+  clock += service.refreshInterval() * 1000;
+  const snapshot = await service.getSnapshot();
+  assert.equal(snapshot.gridImportIndex, 1302.5, 'no jump of 2154 kWh billed at once');
+  assert.deepEqual(saved, [-2154.2]);
+
+  // A restart: the stored offset is reused, the seed is only a floor.
+  const again = new SolarEdgeService(
+    normalizeConfig({ api_key: 'K', import_index_offset: -2154.2 }),
+    { client: createFakeClient(), now: () => new Date(clock) },
+  );
+  await again.getCapabilities();
+  again.seedImportIndex(1302.5);
+  clock += again.refreshInterval() * 1000;
+  assert.equal((await again.getSnapshot()).gridImportIndex, 1302.5);
+});
+
+test('a fresh install anchors nothing: the index is the meter counter', async () => {
+  const saved = [];
+  const fake = createFakeClient();
+  let clock = START;
+  const service = new SolarEdgeService(normalizeConfig({ api_key: 'K' }), {
+    client: fake,
+    now: () => new Date(clock),
+    onImportOffset: async (offset) => saved.push(offset),
+  });
+  await service.getCapabilities();
+  clock += service.refreshInterval() * 1000;
+  assert.equal((await service.getSnapshot()).gridImportIndex, 3456.7);
+  assert.deepEqual(saved, [0]);
 });
 
 test('the site id is auto-detected with a Fleet key covering one site', async () => {

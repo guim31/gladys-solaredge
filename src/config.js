@@ -79,6 +79,10 @@ export function normalizeConfig(raw = {}) {
     poll_frequency: toNumber(raw.poll_frequency, DEFAULT_CONFIG.poll_frequency),
     monthly_credits: toNumber(raw.monthly_credits, DEFAULT_CONFIG.monthly_credits),
     storage_details: raw.storage_details === true,
+    // Off-schema, written once by the integration (see
+    // SolarEdgeService#gridImportIndex): keeps the import index continuous
+    // across the V1 -> V2 change of source.
+    import_index_offset: toNumber(raw.import_index_offset, null),
     // V2 reports no revenue: the "Revenue currency" field left with V1. Kept
     // for the dormant revenue code (src/devices/production.js, widgets).
     currency: CURRENCY_UNITS[raw.currency] ? raw.currency : 'euro',

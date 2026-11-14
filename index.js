@@ -28,6 +28,7 @@ import {
 import { SolarEdgeService } from './src/solaredge/service.js';
 import { ERROR_CODES, SolarEdgeError } from './src/solaredge/client.js';
 import { createConnectHandlers } from './src/connect.js';
+import { FEATURE as GRID_FEATURE } from './src/devices/grid.js';
 import {
   ACTIONS,
   CONNECT_STATUS,
@@ -66,6 +67,10 @@ let retryTimer = null;
 let retryDelay = 0;
 // Last transport published, to avoid re-publishing an unchanged badge.
 let lastTransportKey = null;
+// The status line was turned red by a cycle (an authorization to renew).
+let statusDown = false;
+// Tokens of a service being rebuilt for the same application (see onConfigUpdated).
+let pendingTokens = null;
 // Which snapshot each device already published on a tick (src/publisher.js).
 const publisher = new SnapshotPublisher(gladys);
 // The internal polling timer: the source of the states (src/poller.js).
@@ -73,11 +78,16 @@ const poller = new SnapshotPoller(gladys, publisher, () => ({ context, service }
   onSuccess: async (snapshot) => {
     nudgeWidgets(snapshot);
     await reportHealth(null);
+    if (statusDown) {
+      statusDown = false;
+      await setStatus(true);
+    }
   },
   onError: async (err) => {
     await reportHealth(err);
     // Only the user can fix these: say it where they look, the status line.
     if (err?.code === ERROR_CODES.RECONNECT || err?.code === ERROR_CODES.API_RETIRED) {
+      statusDown = true;
       await setStatus(false, describeError(err));
     }
   },
@@ -284,12 +294,19 @@ gladys.onConfigUpdated(async (newConfig) => {
   logger.info('onConfigUpdated -> new configuration received');
   // A new setting deserves its own error line, even if it fails like the last one.
   lastBootstrapFailure = null;
+  const previous = config;
   const previousFingerprint = connectionFingerprint(config);
   config = normalizeConfig(newConfig);
 
   if (!service || connectionFingerprint(config) !== previousFingerprint) {
     // The credentials or the site changed: everything cached (site details,
     // capabilities, snapshot, request counter) is about another installation.
+    // Same application, though: keep the newest tokens, they may not be saved
+    // yet (a failed save, a renewal in flight) and the stored ones are dead.
+    pendingTokens =
+      service?.client.mode === 'oauth' && previous.client_id === config.client_id
+        ? service.client.tokens
+        : null;
     service = null;
     context = null;
   } else {
@@ -340,7 +357,14 @@ async function bootstrap({ force = false } = {}) {
   }
 
   if (!service) {
-    service = new SolarEdgeService(config, { onTokens: saveTokens });
+    service = new SolarEdgeService(config, {
+      onTokens: saveTokens,
+      onImportOffset: (offset) => gladys.setConfig({ import_index_offset: offset }),
+    });
+    if (pendingTokens) {
+      service.client.adoptTokens(pendingTokens);
+      pendingTokens = null;
+    }
   }
 
   // Detecting the installation costs 5 to 9 SolarEdge requests. Retrying that
@@ -365,6 +389,7 @@ async function bootstrap({ force = false } = {}) {
     const site = await service.getSite();
 
     context = { config, siteId, site, capabilities };
+    service.seedImportIndex(lastImportIndex(context));
 
     const devices = buildDiscoveredDevices(gladys, context);
     await gladys.publishDiscoveredDevices(devices);
@@ -411,6 +436,21 @@ async function bootstrap({ force = false } = {}) {
       poller.start(service.refreshInterval() * 1000);
     }
   }
+}
+
+/**
+ * The import index Gladys last stored, from the created Grid device: the
+ * anchor that keeps the index continuous across the V1 -> V2 change of source.
+ */
+function lastImportIndex(ctx) {
+  const id = gladys.externalIds('solaredge-grid', ctx.siteId).feature(GRID_FEATURE.IMPORTED_INDEX);
+  for (const device of gladys.devices ?? []) {
+    const feature = device.features?.find((f) => f.external_id === id);
+    if (feature && typeof feature.last_value === 'number') {
+      return feature.last_value;
+    }
+  }
+  return null;
 }
 
 /**

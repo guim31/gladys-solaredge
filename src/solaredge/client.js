@@ -293,16 +293,17 @@ export class SolarEdgeClient {
     if (!response.ok || !payload?.access_token) {
       const reason = [payload?.error, payload?.error_description].filter(Boolean).join(': ');
       const detail = reason || `HTTP ${response.status}`;
-      // 400 is deterministic (wrong secret, used code, dead refresh token):
-      // only a new "Connect" (or fixing the secret) gets out of it.
-      if (response.status >= 400 && response.status < 500) {
+      // 400/401 are deterministic (wrong secret, used code, dead refresh
+      // token): only a new "Connect" (or fixing the secret) gets out of it.
+      if (response.status === 400 || response.status === 401) {
         throw new SolarEdgeError(`SolarEdge refused the authorization (${detail})`, {
           code: ERROR_CODES.RECONNECT,
           status: response.status,
         });
       }
+      // A busy minute or a hiccup: the refresh token is intact, retry later.
       throw new SolarEdgeError(`SolarEdge token endpoint failed (${detail})`, {
-        code: ERROR_CODES.UNAVAILABLE,
+        code: response.status === 429 ? ERROR_CODES.RATE_LIMITED : ERROR_CODES.UNAVAILABLE,
         status: response.status,
       });
     }
@@ -458,23 +459,20 @@ async function buildHttpError(response, path, mode) {
         status,
       });
     case 429: {
-      // Same status, two meanings (docs, "Authentication" > Errors): a spent
-      // minute window leaves `x-ratelimit-remaining-minute` at 0 and sends
-      // `retry-after`; a spent month does neither.
-      const remaining = response.headers?.get?.('x-ratelimit-remaining-minute');
-      const perMinute =
-        remaining === '0' ||
-        Boolean(response.headers?.get?.('retry-after')) ||
-        /rate limit/i.test(detail);
-      const monthly = /credit/i.test(detail) || (remaining !== null && Number(remaining) > 0);
+      // Same status, two meanings. The OpenAPI spec flags a spent month with
+      // `x-ratelimit-remaining-month: 0`; the "Authentication" page tells them
+      // apart by `x-ratelimit-remaining-minute` (0 for the minute window) and
+      // the body. The month header wins when present.
+      const month = response.headers?.get?.('x-ratelimit-remaining-month');
+      const minute = response.headers?.get?.('x-ratelimit-remaining-minute');
+      const monthly =
+        month === '0' ||
+        (month == null && (/credit/i.test(detail) || (minute != null && Number(minute) > 0)));
       return new SolarEdgeError(
-        monthly && !perMinute
+        monthly
           ? `SolarEdge monthly credits spent (${path})${suffix}`
           : `SolarEdge rate limit reached (${path})${suffix}`,
-        {
-          code: monthly && !perMinute ? ERROR_CODES.CREDITS_EXHAUSTED : ERROR_CODES.RATE_LIMITED,
-          status,
-        },
+        { code: monthly ? ERROR_CODES.CREDITS_EXHAUSTED : ERROR_CODES.RATE_LIMITED, status },
       );
     }
     default:

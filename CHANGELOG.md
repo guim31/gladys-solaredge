@@ -20,7 +20,8 @@ the GitHub Releases of the repository.
   and a "Site Access" application, fill in its Client ID, Client Secret and
   your site ID, then press **Connect** (step by step in the documentation).
   Installers can paste a V2 Fleet API key instead. Devices, features and their
-  history are kept.
+  history are kept, and the grid import index goes on from its last value
+  (no jump billed by the energy module).
 - Requires **Gladys 5.2** or later (the "Connect" button).
 - The refresh interval now adapts to the monthly SolarEdge credits (2,000 on
   the Free plan, new **Monthly credits** setting): about every 50 minutes for a
