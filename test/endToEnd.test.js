@@ -14,41 +14,60 @@ import { SolarEdgeClient } from '../src/solaredge/client.js';
 import { availableBlueprints, buildDiscoveredDevices } from '../src/devices/index.js';
 import { createFakeGladys, stateOf } from './helpers/fakeGladys.js';
 import {
-  CURRENT_POWER_FLOW,
-  ENERGY_DETAILS,
+  DEVICES,
+  ENERGY_MONTHLY,
+  LIFETIME_ENERGY,
+  METERS_LIFETIME,
+  METERS_TELEMETRY,
   OVERVIEW,
+  POWER,
   SITE_DETAILS,
-  STORAGE_DATA,
+  STORAGE_STATUS,
+  STORAGE_TELEMETRY,
 } from './helpers/solaredgeFixtures.js';
 
-/** A `fetch` answering the real SolarEdge routes, recording every URL. */
+const json = (status, body) => ({
+  ok: status < 400,
+  status,
+  headers: { get: () => null },
+  json: async () => body,
+  text: async () => JSON.stringify(body),
+});
+
+/** A `fetch` answering the SolarEdge V2 routes, recording every request. */
 function createFakeFetch() {
-  const urls = [];
+  const requests = [];
   const routes = [
-    [/\/sites\/list$/, { sites: { count: 1, site: [{ id: 1234567, name: 'Maison' }] } }],
-    [/\/site\/\d+\/details$/, { details: SITE_DETAILS }],
-    [/\/site\/\d+\/currentPowerFlow$/, { siteCurrentPowerFlow: CURRENT_POWER_FLOW }],
-    [/\/site\/\d+\/overview$/, { overview: OVERVIEW }],
-    [/\/site\/\d+\/energyDetails$/, { energyDetails: ENERGY_DETAILS }],
-    [/\/site\/\d+\/storageData$/, { storageData: STORAGE_DATA }],
+    [/^\/v2\/sites$/, { sites: { count: 1, site: [{ siteId: 1234567, name: 'Maison' }] } }],
+    [/^\/v2\/sites\/\d+$/, SITE_DETAILS],
+    [/^\/v2\/sites\/\d+\/overview$/, OVERVIEW],
+    [/^\/v2\/sites\/\d+\/power$/, POWER],
+    [/^\/v2\/sites\/\d+\/energy$/, ENERGY_MONTHLY],
+    [/^\/v2\/sites\/\d+\/lifetime-energy$/, LIFETIME_ENERGY],
+    [/^\/v2\/sites\/\d+\/devices$/, DEVICES],
+    [/^\/v2\/sites\/\d+\/meters\/telemetry$/, METERS_TELEMETRY],
+    [/^\/v2\/sites\/\d+\/meters\/lifetime-energy$/, METERS_LIFETIME],
+    [/^\/v2\/sites\/\d+\/storage\/telemetry$/, STORAGE_TELEMETRY],
+    [/^\/v2\/sites\/\d+\/storage\/status$/, STORAGE_STATUS],
   ];
 
-  const impl = async (rawUrl) => {
+  const impl = async (rawUrl, init = {}) => {
     const url = new URL(rawUrl);
-    urls.push(url);
-    const route = routes.find(([pattern]) => pattern.test(url.pathname));
-    if (!route) {
-      return { ok: false, status: 404, text: async () => 'no such route' };
+    requests.push({ url, headers: init.headers ?? {} });
+    // Anything outside /v2 is the retired V1 API.
+    if (!url.pathname.startsWith('/v2/')) {
+      return json(410, { title: 'API Version Deprecated', status: 410 });
     }
-    return { ok: true, status: 200, json: async () => route[1] };
+    const route = routes.find(([pattern]) => pattern.test(url.pathname));
+    return route ? json(200, route[1]) : json(404, { title: 'Not Found' });
   };
-  impl.urls = urls;
+  impl.requests = requests;
   return impl;
 }
 
 function createService(configOverrides = {}) {
   const fetchImpl = createFakeFetch();
-  const config = normalizeConfig({ api_key: 'TESTKEY', ...configOverrides });
+  const config = normalizeConfig({ api_key: 'FLEETKEY', ...configOverrides });
   const now = () => new Date('2024-05-18T13:42:00Z');
   const service = new SolarEdgeService(config, {
     client: new SolarEdgeClient({ apiKey: config.api_key, fetchImpl, now }),
@@ -89,30 +108,30 @@ test('a full cycle publishes every device from real HTTP responses', async () =>
   assert.equal(stateOf(gladys, 'self-consumption-today'), 7.3);
   assert.equal(stateOf(gladys, 'imported-today'), 2.5);
   assert.equal(stateOf(gladys, 'charge-level'), 62);
+  assert.equal(stateOf(gladys, 'power'), 4200);
+  assert.equal(stateOf(gladys, 'energy-total'), 18540);
   assert.equal(stateOf(gladys, 'temperature'), 25.1);
   assert.equal(gladys.texts[0].text, 'En charge');
 });
 
-test('the requests carry the API key, the meters and a site-local period', async () => {
+test('the requests go to /v2 with the key in a header and UTC instants', async () => {
   const { service, fetchImpl } = createService();
   await service.getSnapshot();
 
-  for (const url of fetchImpl.urls) {
-    assert.equal(url.searchParams.get('api_key'), 'TESTKEY', `${url.pathname} has no API key`);
+  for (const { url, headers } of fetchImpl.requests) {
+    assert.match(url.pathname, /^\/v2\//);
+    assert.equal(url.searchParams.get('api_key'), null, `${url.pathname} leaks the key`);
+    assert.equal(headers['X-API-Key'], 'FLEETKEY');
   }
-
-  const energy = fetchImpl.urls.find((u) => u.pathname.endsWith('/energyDetails'));
-  assert.equal(energy.searchParams.get('timeUnit'), 'DAY');
-  assert.equal(
-    energy.searchParams.get('meters'),
-    'PRODUCTION,CONSUMPTION,SELFCONSUMPTION,FEEDIN,PURCHASED',
-  );
-  // 13:42 UTC is 15:42 in Europe/Paris, the timezone of the site details.
-  assert.equal(energy.searchParams.get('startTime'), '2024-05-18 00:00:00');
-  assert.equal(energy.searchParams.get('endTime'), '2024-05-18 15:42:00');
+  const power = fetchImpl.requests.find((r) => r.url.pathname.endsWith('/power')).url;
+  assert.equal(power.searchParams.get('from'), '2024-05-18T12:57:00Z');
+  assert.equal(power.searchParams.get('to'), '2024-05-18T13:42:00Z');
+  const energy = fetchImpl.requests.find((r) => r.url.pathname.endsWith('/energy')).url;
+  assert.equal(energy.searchParams.get('resolution'), 'MONTH');
+  assert.equal(energy.searchParams.get('from'), '2023-12-31T00:00:00Z');
 });
 
-test('four devices polling one cycle cost 2 live requests, not 8', async () => {
+test('the whole detection stays cheap, and a cycle is shared by every device', async () => {
   const gladys = createFakeGladys();
   const { service, config, fetchImpl } = createService();
 
@@ -124,17 +143,13 @@ test('four devices polling one cycle cost 2 live requests, not 8', async () => {
     site: await service.getSite(),
   };
 
-  const before = fetchImpl.urls.length;
-  // Gladys polls the four devices back to back, as it does in production.
+  const before = fetchImpl.requests.length;
   await Promise.all(
     availableBlueprints(capabilities).map(async (bp) =>
       bp.onPoll(gladys, context, await service.getSnapshot()),
     ),
   );
-
-  assert.equal(fetchImpl.urls.length - before, 0, 'the cycle snapshot was already cached');
-
-  // And the whole bootstrap stayed cheap: sites, details, flow, overview,
-  // energyDetails — five requests, once.
-  assert.equal(fetchImpl.urls.length, 5);
+  assert.equal(fetchImpl.requests.length - before, 0, 'the cycle snapshot was already cached');
+  // sites, details, devices, overview, meters, power, storage, energy, lifetime.
+  assert.equal(fetchImpl.requests.length, 9);
 });

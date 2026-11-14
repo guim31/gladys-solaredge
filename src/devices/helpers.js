@@ -71,8 +71,8 @@ export const DAILY_ENERGY = {
 /**
  * Build a `publishStates` batch, dropping the features with no value.
  *
- * A missing reading is NOT a zero: a site without a consumption meter, an
- * `energyDetails` refresh that failed, a battery that reports no temperature —
+ * A missing reading is NOT a zero: a site without a consumption meter, a
+ * `meters/telemetry` read that failed, a battery that reports no temperature —
  * publishing 0 for those would draw a flat line in the history and lie to the
  * user. Skipping the entry keeps the last known state instead.
  *

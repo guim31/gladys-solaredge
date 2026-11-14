@@ -17,9 +17,10 @@ import { createFakeClient } from './helpers/solaredgeFixtures.js';
 const INTERVAL_MS = 900_000;
 
 async function setUp() {
-  const config = normalizeConfig({ api_key: 'K' });
+  // A paid plan's allowance: the refresh interval is the configured 900 s.
+  const config = normalizeConfig({ api_key: 'K', monthly_credits: 100_000 });
   const clock = { now: new Date('2024-05-18T13:42:00Z') };
-  const client = createFakeClient();
+  const client = createFakeClient({ dailyRequestLimit: 3225 });
   const service = new SolarEdgeService(config, { client, now: () => clock.now });
   const capabilities = await service.getCapabilities();
   const context = {
@@ -48,7 +49,7 @@ async function settle() {
   }
 }
 
-const liveReads = (client) => client.calls.filter((name) => name === 'flow').length;
+const liveReads = (client) => client.calls.filter((name) => name === 'overview').length;
 
 test('the timer publishes every created device without any onPoll from Gladys', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -186,7 +187,6 @@ test('the interval has a floor: a bad setting cannot make a busy loop', async ()
 test('a failed cycle reports the error and keeps the timer alive', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { clock, client, poller, health } = await setUp();
-  client.getCurrentPowerFlow = () => Promise.reject(new Error('down'));
   client.getOverview = () => Promise.reject(new Error('down'));
   clock.now = new Date(clock.now.getTime() + INTERVAL_MS);
 
@@ -239,8 +239,8 @@ test('a failing SolarEdge endpoint is logged once, and its recovery once', async
     }
   });
   const { clock, client, poller } = await setUp();
-  const realOverview = client.getOverview;
-  client.getOverview = () => Promise.reject(new Error('HTTP 500'));
+  const realMeters = client.getMetersTelemetry;
+  client.getMetersTelemetry = () => Promise.reject(new Error('HTTP 500'));
 
   const out = t.mock.method(console, 'log', () => {});
   const err = t.mock.method(console, 'error', () => {});
@@ -250,12 +250,12 @@ test('a failing SolarEdge endpoint is logged once, and its recovery once', async
   }
   const warnings = err.mock.calls.map((c) => c.arguments.join(' '));
   assert.equal(warnings.length, 1, warnings.join('\n'));
-  assert.match(warnings[0], /overview failed: HTTP 500/);
+  assert.match(warnings[0], /meters\/telemetry failed: HTTP 500/);
 
-  client.getOverview = realOverview;
+  client.getMetersTelemetry = realMeters;
   clock.now = new Date(clock.now.getTime() + INTERVAL_MS);
   await poller.runOnce();
   const infos = out.mock.calls.map((c) => c.arguments.join(' '));
   assert.equal(infos.length, 1, infos.join('\n'));
-  assert.match(infos[0], /overview answers again/);
+  assert.match(infos[0], /meters\/telemetry answers again/);
 });

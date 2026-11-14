@@ -2,8 +2,8 @@
 // Device: HOME CONSUMPTION.
 //
 // Only published when the installation has a consumption meter (SolarEdge
-// Modbus meter): without it, `currentPowerFlow` has no LOAD node and
-// `energyDetails` reports no Consumption meter, so the device would stay empty
+// Modbus meter): without it, `meters/telemetry` has no consumption power and
+// the overview no consumption, so the device would stay empty
 // forever — better not to create it at all.
 // -----------------------------------------------------------------------------
 

@@ -150,12 +150,12 @@ test('the revenue feature only exists when SolarEdge computes a revenue', () => 
 
 test('no revenue capability means no revenue state is ever published', async () => {
   const gladys = createFakeGladys();
-  const snapshot = await buildSnapshot();
+  const built = await buildSnapshot();
+  // V2 reports no revenue: the capability is always off now. A snapshot
+  // carrying one anyway must still not post a state for an undeclared feature.
+  assert.equal(built.overview.revenueToday, null);
+  const snapshot = { ...built, overview: { ...built.overview, revenueToday: 3.21 } };
   const bp = DEVICE_BLUEPRINTS.find((b) => b.key === 'solaredge-production');
-
-  // The snapshot DOES carry a revenue: the guard must be the capability, not
-  // the value, or we would post a state for an undeclared feature.
-  assert.equal(snapshot.overview.revenueToday, 3.21);
   await bp.onPoll(gladys, createContext({ capabilities: { revenue: false } }), snapshot);
 
   assert.equal(stateOf(gladys, 'energy-today'), 21.4, 'the other counters still publish');
@@ -177,7 +177,9 @@ test('findBlueprintByDevice routes an external_id back to its owner', () => {
 
 test('the production device publishes power, today, the lifetime index and the revenue', async () => {
   const gladys = createFakeGladys();
-  const snapshot = await buildSnapshot();
+  const built = await buildSnapshot();
+  // The revenue path stays for a V1 device still declaring the feature.
+  const snapshot = { ...built, overview: { ...built.overview, revenueToday: 3.21 } };
   const bp = DEVICE_BLUEPRINTS.find((b) => b.key === 'solaredge-production');
 
   await bp.onPoll(gladys, createContext(), snapshot);

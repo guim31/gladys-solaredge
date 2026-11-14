@@ -23,45 +23,57 @@ import { localize } from './i18n.js';
 const logger = createLogger({ name: 'actions' });
 
 /**
- * What the user reads, from a button or a widget, while no API key is set.
- * Resolved rather than thrown: a thrown error reaches Gladys as a single
- * string (`error: e.message`), so only a resolved message can be multilingual.
+ * What the user reads, from a button or a widget, while SolarEdge cannot be
+ * reached yet. Resolved rather than thrown: a thrown error reaches Gladys as a
+ * single string (`error: e.message`), so only a resolved message can be
+ * multilingual.
  */
 export const NOT_CONFIGURED_MESSAGE = {
-  en: 'The integration is not configured yet: paste your SolarEdge API key in the settings.',
-  fr: "L'intégration n'est pas configurée : renseignez votre clé d'API SolarEdge dans les réglages.",
-  de: 'Die Integration ist noch nicht konfiguriert: Füge deinen SolarEdge-API-Schlüssel in den Einstellungen ein.',
-  es: 'La integración aún no está configurada: introduzca su clave de API de SolarEdge en la configuración.',
-};
-
-/** Connection status shown while no API key is set. */
-export const MISSING_KEY_STATUS = {
-  en: 'Paste your SolarEdge Monitoring API key in the settings above.',
-  fr: "Renseignez votre clé d'API SolarEdge Monitoring dans les réglages ci-dessus.",
-  de: 'Füge deinen SolarEdge-Monitoring-API-Schlüssel oben in den Einstellungen ein.',
-  es: 'Introduzca su clave de API de SolarEdge Monitoring en la configuración de arriba.',
+  en: 'The integration is not connected to SolarEdge yet: fill in your developer application settings and press "Connect".',
+  fr: "L'intégration n'est pas encore connectée à SolarEdge : renseignez votre application développeur et appuyez sur « Connecter ».",
+  de: 'Die Integration ist noch nicht mit SolarEdge verbunden: Trage deine Entwickler-Anwendung ein und klicke auf „Verbinden“.',
+  es: 'La integración aún no está conectada a SolarEdge: introduzca los datos de su aplicación de desarrollador y pulse «Conectar».',
 };
 
 /**
- * Connection status shown when the daily budget is too low to detect the
+ * Connection status while nothing usable is configured. Version 1.x users land
+ * here with a retired V1 key, which is why it names the retirement first.
+ */
+export const MISSING_KEY_STATUS = {
+  en: 'SolarEdge retired its V1 API on 3 November 2026: create a SolarEdge developer account and a "Site Access" application, fill in its Client ID, Client Secret and your Site ID, then press "Connect" (see the documentation).',
+  fr: "SolarEdge a arrêté son API V1 le 3 novembre 2026 : créez un compte développeur SolarEdge et une application « Site Access », renseignez son Client ID, son Client Secret et l'identifiant de votre site, puis appuyez sur « Connecter » (voir la documentation).",
+  de: 'SolarEdge hat seine V1-API am 3. November 2026 abgeschaltet: Lege ein SolarEdge-Entwicklerkonto und eine „Site Access“-Anwendung an, trage deren Client ID, Client Secret und deine Standort-ID ein und klicke dann auf „Verbinden“ (siehe Dokumentation).',
+  es: 'SolarEdge retiró su API V1 el 3 de noviembre de 2026: cree una cuenta de desarrollador de SolarEdge y una aplicación «Site Access», introduzca su Client ID, su Client Secret y el ID de su sitio, y pulse «Conectar» (consulte la documentación).',
+};
+
+/** Connection status once the application is filled in, before "Connect". */
+export const CONNECT_STATUS = {
+  en: 'Press "Connect" and approve access to your site with your SolarEdge (mySolarEdge) login.',
+  fr: "Appuyez sur « Connecter » et autorisez l'accès à votre site avec vos identifiants SolarEdge (mySolarEdge).",
+  de: 'Klicke auf „Verbinden“ und erlaube den Zugriff auf deinen Standort mit deinen SolarEdge-Zugangsdaten (mySolarEdge).',
+  es: 'Pulse «Conectar» y autorice el acceso a su sitio con sus credenciales de SolarEdge (mySolarEdge).',
+};
+
+/**
+ * Connection status when the daily budget is too low to detect the
  * installation.
  * @param {{ count: number, limit: number }} usage
  */
 export function quotaNearlySpentStatus({ count, limit }) {
   return {
-    en: `SolarEdge daily quota nearly spent (${count}/${limit}). Detection resumes tomorrow, or raise the refresh interval.`,
-    fr: `Quota SolarEdge presque épuisé (${count}/${limit}). La détection reprendra demain ; augmentez l'intervalle de rafraîchissement.`,
-    de: `SolarEdge-Tageskontingent fast aufgebraucht (${count}/${limit}). Die Erkennung wird morgen fortgesetzt; erhöhe das Aktualisierungsintervall.`,
-    es: `Cuota diaria de SolarEdge casi agotada (${count}/${limit}). La detección se reanudará mañana; aumente el intervalo de actualización.`,
+    en: `SolarEdge daily request budget nearly spent (${count}/${limit}). Detection resumes tomorrow (UTC).`,
+    fr: `Budget quotidien de requêtes SolarEdge presque épuisé (${count}/${limit}). La détection reprendra demain (UTC).`,
+    de: `Tagesbudget an SolarEdge-Anfragen fast aufgebraucht (${count}/${limit}). Die Erkennung wird morgen (UTC) fortgesetzt.`,
+    es: `Presupuesto diario de solicitudes de SolarEdge casi agotado (${count}/${limit}). La detección se reanudará mañana (UTC).`,
   };
 }
 
 /** Badge message of the devices while the daily quota is spent. */
 export const QUOTA_TRANSPORT_MESSAGE = {
-  en: 'SolarEdge daily request quota reached: values refresh again tomorrow.',
-  fr: 'Quota de requêtes SolarEdge atteint : les valeurs repartiront demain.',
-  de: 'Tageskontingent an SolarEdge-Anfragen erreicht: Die Werte werden morgen wieder aktualisiert.',
-  es: 'Cuota diaria de solicitudes de SolarEdge alcanzada: los valores se actualizarán de nuevo mañana.',
+  en: 'SolarEdge request budget reached: values refresh again tomorrow.',
+  fr: 'Budget de requêtes SolarEdge atteint : les valeurs repartiront demain.',
+  de: 'Budget an SolarEdge-Anfragen erreicht: Die Werte werden morgen wieder aktualisiert.',
+  es: 'Presupuesto de solicitudes de SolarEdge alcanzado: los valores se actualizarán de nuevo mañana.',
 };
 
 /** The rated power of a site, or what to say without it. */
@@ -81,8 +93,8 @@ function plural(count, one, many) {
 export const ACTIONS = {
   /**
    * "Test the connection": the button a user presses right after pasting an
-   * API key. It answers the three questions they actually have — is the key
-   * valid, which site did we land on, and what will this integration create.
+   * credentials. It answers the three questions they actually have — is the
+   * access valid, which site did we land on, and what will this integration create.
    */
   async test_connection(gladys, { service }) {
     logger.info('Action test_connection');
@@ -107,8 +119,9 @@ export const ACTIONS = {
   },
 
   /**
-   * "List my sites": what to press when the API key covers several
-   * installations and Gladys needs to be told which one to follow.
+   * "List my sites": what to press when a Fleet API key covers several
+   * installations and Gladys needs to be told which one to follow (with
+   * "Connect", the one authorized site).
    */
   async list_sites(gladys, { service }) {
     logger.info('Action list_sites');
@@ -121,7 +134,7 @@ export const ACTIONS = {
         es: 'Esta clave de API no da acceso a ningún sitio.',
       };
     }
-    const list = sites.map((site) => `${site.id} — ${site.name}`).join(' | ');
+    const list = sites.map((site) => `${site.siteId} — ${site.name}`).join(' | ');
     return {
       en: `${sites.length} site(s): ${list}. Copy the id into the "Site ID" setting.`,
       fr: `${sites.length} site(s) : ${list}. Copiez l'identifiant dans le réglage « Identifiant du site ».`,
@@ -146,19 +159,19 @@ export const ACTIONS = {
   },
 
   /**
-   * "API usage": SolarEdge allows 300 requests per day and answers 429 past
-   * that. This button says where we stand — the first thing to look at when
-   * the values stop moving in the afternoon.
+   * "API usage": the Free tier gives 2,000 credits a month, spent at one per
+   * call. This button says where today stands against the daily share, and
+   * how often the integration actually refreshes to stay within it.
    */
   async api_usage(gladys, { service, config }) {
     const { count, limit, remaining } = service.usage;
-    const perCycle = config.storage_details ? 3 : 2;
-    const cyclesLeft = Math.floor(remaining / perCycle);
+    const minutes = Math.round(service.refreshInterval() / 60);
+    const perCycle = service.callsPerCycle;
     return {
-      en: `${count}/${limit} SolarEdge requests used today (UTC). ${remaining} left, about ${cyclesLeft} refresh cycle(s).`,
-      fr: `${count}/${limit} requêtes SolarEdge utilisées aujourd'hui (UTC). Il en reste ${remaining}, soit environ ${cyclesLeft} cycle(s) de rafraîchissement.`,
-      de: `${count}/${limit} SolarEdge-Anfragen heute verbraucht (UTC). Noch ${remaining} übrig, also etwa ${cyclesLeft} ${plural(cyclesLeft, 'Aktualisierungszyklus', 'Aktualisierungszyklen')}.`,
-      es: `${count}/${limit} solicitudes de SolarEdge usadas hoy (UTC). Quedan ${remaining}, es decir, unos ${cyclesLeft} ciclo(s) de actualización.`,
+      en: `${count}/${limit} SolarEdge requests used today (UTC), ${remaining} left: the daily share of ${config.monthly_credits} credits a month. One refresh costs ${perCycle} request(s): the values refresh every ${minutes} min.`,
+      fr: `${count}/${limit} requêtes SolarEdge utilisées aujourd'hui (UTC), il en reste ${remaining} : la part quotidienne de ${config.monthly_credits} crédits par mois. Un rafraîchissement coûte ${perCycle} requête(s) : les valeurs sont rafraîchies toutes les ${minutes} min.`,
+      de: `${count}/${limit} SolarEdge-Anfragen heute verbraucht (UTC), noch ${remaining} übrig: der Tagesanteil von ${config.monthly_credits} Credits pro Monat. Eine Aktualisierung kostet ${perCycle} ${plural(perCycle, 'Anfrage', 'Anfragen')}: Die Werte werden alle ${minutes} Min. aktualisiert.`,
+      es: `${count}/${limit} solicitudes de SolarEdge usadas hoy (UTC), quedan ${remaining}: la parte diaria de ${config.monthly_credits} créditos al mes. Una actualización consume ${perCycle} solicitud(es): los valores se actualizan cada ${minutes} min.`,
     };
   },
 };
@@ -224,12 +237,40 @@ export function describeError(err) {
   }
 
   switch (err?.code) {
+    case ERROR_CODES.API_RETIRED:
+      return {
+        en: 'SolarEdge retired its V1 API on 3 Nov 2026: migrate to V2 (developer account, then "Connect": see the documentation).',
+        fr: 'SolarEdge a arrêté son API V1 le 3 nov. 2026 : migrez vers la V2 (compte développeur, puis « Connecter » : voir la documentation).',
+        de: 'SolarEdge hat seine V1-API am 3. Nov. 2026 abgeschaltet: Wechsle zu V2 (Entwicklerkonto, dann „Verbinden“: siehe Dokumentation).',
+        es: 'SolarEdge retiró su API V1 el 3 nov. 2026: migre a la V2 (cuenta de desarrollador y luego «Conectar»: consulte la documentación).',
+      };
     case ERROR_CODES.UNAUTHORIZED:
       return {
-        en: 'SolarEdge refused the API key: check it in the monitoring portal (Admin > Site Access).',
-        fr: "SolarEdge a refusé la clé d'API : vérifiez-la dans le portail de supervision (Admin > Accès au site).",
-        de: 'SolarEdge hat den API-Schlüssel abgelehnt: Prüfe ihn im Monitoring-Portal (Admin > Site Access).',
-        es: 'SolarEdge rechazó la clave de API: compruébela en el portal de monitorización (Admin > Site Access).',
+        en: 'SolarEdge refused access: check the Site ID. V1 API keys stopped working on 3 Nov 2026: use "Connect" (or a V2 Fleet key).',
+        fr: "SolarEdge a refusé l'accès : vérifiez l'identifiant du site. Les clés d'API V1 ne marchent plus depuis le 3 nov. 2026 : utilisez « Connecter » (ou une clé Fleet V2).",
+        de: 'SolarEdge hat den Zugriff verweigert: Prüfe die Standort-ID. V1-API-Schlüssel gehen seit 3. Nov. 2026 nicht mehr: Nutze „Verbinden“ (oder einen V2-Fleet-Schlüssel).',
+        es: 'SolarEdge denegó el acceso: compruebe el ID del sitio. Las claves V1 no funcionan desde el 3 nov. 2026: use «Conectar» (o una clave Fleet V2).',
+      };
+    case ERROR_CODES.RECONNECT:
+      return {
+        en: 'SolarEdge access expired or was refused: check the Client Secret, then press "Connect" again.',
+        fr: "L'accès à SolarEdge a expiré ou a été refusé : vérifiez le Client Secret, puis appuyez de nouveau sur « Connecter ».",
+        de: 'Der SolarEdge-Zugriff ist abgelaufen oder wurde verweigert: Prüfe das Client Secret und klicke erneut auf „Verbinden“.',
+        es: 'El acceso a SolarEdge caducó o fue rechazado: compruebe el Client Secret y pulse de nuevo «Conectar».',
+      };
+    case ERROR_CODES.TIER:
+      return {
+        en: 'This SolarEdge data needs a paid developer plan.',
+        fr: 'Cette donnée SolarEdge demande une offre développeur payante.',
+        de: 'Diese SolarEdge-Daten erfordern einen kostenpflichtigen Entwicklertarif.',
+        es: 'Estos datos de SolarEdge requieren un plan de desarrollador de pago.',
+      };
+    case ERROR_CODES.CREDITS_EXHAUSTED:
+      return {
+        en: 'The monthly SolarEdge credits are spent: values come back at the next billing cycle. Check "Monthly credits".',
+        fr: 'Les crédits SolarEdge du mois sont épuisés : les valeurs reviendront au prochain cycle de facturation. Vérifiez « Crédits mensuels ».',
+        de: 'Die monatlichen SolarEdge-Credits sind aufgebraucht: Die Werte kommen im nächsten Abrechnungszyklus zurück. Prüfe „Monatliche Credits“.',
+        es: 'Los créditos mensuales de SolarEdge se han agotado: los valores volverán en el próximo ciclo de facturación. Revise «Créditos mensuales».',
       };
     case ERROR_CODES.NOT_FOUND:
       return {
@@ -241,10 +282,10 @@ export function describeError(err) {
     case ERROR_CODES.QUOTA_EXCEEDED:
     case ERROR_CODES.RATE_LIMITED:
       return {
-        en: 'SolarEdge daily request quota reached: increase the refresh interval, retry tomorrow.',
-        fr: "Quota de requêtes SolarEdge atteint : augmentez l'intervalle de rafraîchissement et réessayez demain.",
-        de: 'Tageskontingent an SolarEdge-Anfragen erreicht: Erhöhe das Aktualisierungsintervall und versuche es morgen erneut.',
-        es: 'Cuota diaria de solicitudes de SolarEdge alcanzada: aumente el intervalo de actualización y vuelva a intentarlo mañana.',
+        en: 'SolarEdge request budget reached (daily share of the monthly credits, or calls per minute): retry later.',
+        fr: 'Budget de requêtes SolarEdge atteint (part quotidienne des crédits mensuels, ou appels par minute) : réessayez plus tard.',
+        de: 'Budget an SolarEdge-Anfragen erreicht (Tagesanteil der monatlichen Credits oder Aufrufe pro Minute): Versuche es später erneut.',
+        es: 'Presupuesto de solicitudes de SolarEdge alcanzado (parte diaria de los créditos mensuales o llamadas por minuto): vuelva a intentarlo más tarde.',
       };
     case ERROR_CODES.NOT_READY:
       return {

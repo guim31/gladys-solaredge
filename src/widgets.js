@@ -14,7 +14,7 @@
 //
 //   1. A widget NEVER costs a SolarEdge request. Every open dashboard pulls the
 //      widget content, so a widget that refreshed SolarEdge would burn the
-//      300 requests/day budget on page loads. The builders read the LAST
+//      monthly SolarEdge credits on page loads. The builders read the LAST
 //      snapshot kept in memory (see SolarEdgeService.lastSnapshot), and the
 //      tiles and charts are bound to the published device features
 //      (`device_feature` / `device_features`): the core keeps them live from

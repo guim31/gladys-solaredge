@@ -1,85 +1,168 @@
 // -----------------------------------------------------------------------------
-// Sample SolarEdge Monitoring API payloads, shaped like the real ones.
+// Sample SolarEdge Monitoring API V2 payloads, shaped after the OpenAPI
+// specification published on api-docs.solaredge.com (Basic Monitoring API
+// 2.2.0). NOT recorded from a real site: no V2 credential was available when
+// the integration was migrated (2026-11-14).
 //
-// The scenario is a spring afternoon on a site with a consumption meter and a
-// battery: the panels produce 4.2 kW, the house eats 1.1 kW, the battery is
-// charging at 1.5 kW and the surplus (1.6 kW) is exported to the grid.
+// The scenario is a spring afternoon on a site with a grid meter (import and
+// export, no production meter) and a battery: the panels produce 4.2 kW, the
+// house eats 1.1 kW, the battery is charging at 1.5 kW and the surplus
+// (1.6 kW) is exported to the grid.
 // -----------------------------------------------------------------------------
 
+export const SITE_ID = 1234567;
+
 export const SITE_DETAILS = {
-  id: 1234567,
+  siteId: SITE_ID,
   name: 'Maison',
+  accountId: 42,
   peakPower: 6.4,
-  currency: 'EUR',
-  status: 'Active',
-  location: { country: 'France', city: 'Nantes', timeZone: 'Europe/Paris' },
+  installationDate: '2019-04-02T00:00:00Z',
+  lastUpdateTime: '2024-05-18T15:42:11+02:00',
+  location: { country: 'France', city: 'Nantes', timezone: 'Europe/Paris' },
+  activationStatus: 'ACTIVE',
 };
 
-export const CURRENT_POWER_FLOW = {
-  unit: 'kW',
-  connections: [
-    { from: 'PV', to: 'Load' },
-    { from: 'PV', to: 'Storage' },
-    { from: 'LOAD', to: 'Grid' },
-  ],
-  GRID: { status: 'Active', currentPower: 1.6 },
-  LOAD: { status: 'Active', currentPower: 1.1 },
-  PV: { status: 'Active', currentPower: 4.2 },
-  STORAGE: { status: 'Charging', currentPower: 1.5, chargeLevel: 62, critical: false },
-};
+export const DEVICES = [
+  {
+    type: 'METER',
+    serialNumber: '606A0000-01',
+    name: 'Meter 1',
+    meterType: 'FeedIn',
+    active: true,
+  },
+  {
+    type: 'BATTERY',
+    serialNumber: 'B1234',
+    name: 'Battery 1',
+    nameplate: 9700,
+    active: true,
+  },
+];
+
+const PERIOD = { from: '2024-05-18T15:00:00+02:00', to: '2024-05-18T15:45:00+02:00' };
+const stamps = [
+  '2024-05-18T15:00:00+02:00',
+  '2024-05-18T15:15:00+02:00',
+  '2024-05-18T15:30:00+02:00',
+];
+/** A V2 series: `values` in order, `null` for a bucket without data. */
+export function series(unit, values) {
+  return { unit, values: values.map((value, i) => ({ timestamp: stamps[i], value })) };
+}
 
 export const OVERVIEW = {
-  lastUpdateTime: '2024-05-18 15:42:11',
-  lifeTimeData: { energy: 18_540_000, revenue: 2781.5 },
-  lastYearData: { energy: 4_120_000 },
-  lastMonthData: { energy: 612_000 },
-  lastDayData: { energy: 21_400, revenue: 3.21 },
-  currentPower: { power: 4200 },
+  siteId: SITE_ID,
+  production: {
+    total: 21_400,
+    unit: 'WH',
+    toSelfConsumption: 5400,
+    toStorage: 1900,
+    toGrid: 14_100,
+  },
+  consumption: { total: 9800, unit: 'WH', fromPv: 5400, fromStorage: 1900, fromGrid: 2500 },
 };
 
-export const ENERGY_DETAILS = {
-  timeUnit: 'DAY',
-  unit: 'Wh',
-  meters: [
-    { type: 'Production', values: [{ date: '2024-05-18 00:00:00', value: 21_400 }] },
-    { type: 'Consumption', values: [{ date: '2024-05-18 00:00:00', value: 9800 }] },
-    { type: 'SelfConsumption', values: [{ date: '2024-05-18 00:00:00', value: 7300 }] },
-    { type: 'FeedIn', values: [{ date: '2024-05-18 00:00:00', value: 14_100 }] },
-    { type: 'Purchased', values: [{ date: '2024-05-18 00:00:00', value: 2500 }] },
+export const POWER = {
+  period: PERIOD,
+  unit: 'W',
+  resolution: 'QUARTER_HOUR',
+  values: [
+    { timestamp: stamps[0], value: 4050 },
+    { timestamp: stamps[1], value: 4200 },
+    // The bucket still filling up: no value yet.
+    { timestamp: stamps[2], value: null },
   ],
 };
 
-export const STORAGE_DATA = {
-  batteryCount: 1,
-  batteries: [
+export const METERS_TELEMETRY = {
+  period: PERIOD,
+  resolution: 'QUARTER_HOUR',
+  meters: {
+    '606A0000-01': {
+      consumptionPower: series('W', [1000, 1100, null]),
+      consumptionEnergy: series('WH', [250, 275, null]),
+      importPower: series('W', [0, 0, null]),
+      importEnergy: series('WH', [0, 0, null]),
+      exportPower: series('W', [1500, 1600, null]),
+      exportEnergy: series('WH', [375, 400, null]),
+    },
+  },
+};
+
+export const STORAGE_TELEMETRY = {
+  period: PERIOD,
+  resolution: 'QUARTER_HOUR',
+  storage: {
+    B1234: {
+      chargePower: series('W', [1400, 1500, null]),
+      dischargePower: series('W', [0, 0, null]),
+      stateOfEnergy: series('PERCENTAGE', [60, 62, null]),
+      remainingEnergy: series('WH', [5760, 5952, null]),
+      chargeEnergy: series('WH', [350, 375, null]),
+      dischargeEnergy: series('WH', [0, 0, null]),
+    },
+  },
+};
+
+export const STORAGE_STATUS = {
+  period: PERIOD,
+  resolution: 'QUARTER_HOUR',
+  storage: {
+    B1234: {
+      batteryState: { values: [{ timestamp: stamps[1], value: 3 }] },
+      internalTemperature: {
+        unit: 'CELSIUS',
+        values: [
+          { timestamp: stamps[0], value: 24.5 },
+          { timestamp: stamps[1], value: 25.1 },
+        ],
+      },
+    },
+  },
+};
+
+/** `energy?resolution=MONTH` from 2023-12-31: December is left out, May is this month. */
+export const ENERGY_MONTHLY = {
+  period: { from: '2023-12-01T00:00:00+01:00', to: '2024-05-18T15:45:00+02:00' },
+  unit: 'WH',
+  resolution: 'MONTH',
+  values: [
+    { timestamp: '2023-12-01T00:00:00+01:00', value: 150_000 },
+    { timestamp: '2024-01-01T00:00:00+01:00', value: 420_000 },
+    { timestamp: '2024-02-01T00:00:00+01:00', value: 610_000 },
+    { timestamp: '2024-03-01T00:00:00+01:00', value: 1_050_000 },
+    { timestamp: '2024-04-01T00:00:00+02:00', value: 1_428_000 },
+    { timestamp: '2024-05-01T00:00:00+02:00', value: 612_000 },
+  ],
+};
+
+export const LIFETIME_ENERGY = {
+  energy: 18_540_000,
+  unit: 'WH',
+  lastUpdateTime: '2024-05-18T15:40:00+02:00',
+};
+
+export const METERS_LIFETIME = {
+  meters: [
     {
-      serialNumber: 'B1234',
-      modelNumber: 'SE-BAT-10K',
-      nameplate: 9700,
-      telemetryCount: 2,
-      telemetries: [
-        {
-          timeStamp: '2024-05-18 15:30:00',
-          power: 1400,
-          batteryState: 60,
-          fullPackEnergyAvailable: 9600,
-          internalTemp: 24.5,
-        },
-        {
-          timeStamp: '2024-05-18 15:45:00',
-          power: 1500,
-          batteryState: 62,
-          fullPackEnergyAvailable: 9600,
-          internalTemp: 25.1,
-        },
+      serialNumber: '606A0000-01',
+      productionEnergy: [],
+      consumptionEnergy: [],
+      importEnergy: [
+        { timestamp: stamps[0], value: 3_456_700 },
+        { timestamp: stamps[1], value: 3_456_700 },
       ],
+      exportEnergy: [],
+      unit: 'WH',
     },
   ],
 };
 
 /**
  * A client stub answering the fixtures above, counting the calls it received.
- * Any endpoint can be overridden to simulate a site without that hardware.
+ * Any endpoint can be overridden (a value, or an Error to throw) to simulate a
+ * site without that hardware or a failing endpoint.
  */
 export function createFakeClient(overrides = {}) {
   const calls = [];
@@ -90,97 +173,117 @@ export function createFakeClient(overrides = {}) {
     }
     return Promise.resolve(value);
   };
+  const pick = (key, fallback) => (key in overrides ? overrides[key] : fallback);
 
   return {
     calls,
-    dailyRequestLimit: 300,
-    usage: { day: '2024-05-18', count: calls.length, limit: 300, remaining: 300 },
-    getSites: () => record('sites', overrides.sites ?? [{ id: 1234567, name: 'Maison' }]),
-    getSiteDetails: () => record('details', overrides.details ?? SITE_DETAILS),
-    getOverview: () => record('overview', overrides.overview ?? OVERVIEW),
-    getCurrentPowerFlow: () => record('flow', overrides.flow ?? CURRENT_POWER_FLOW),
-    getEnergyDetails: () => record('energy', overrides.energy ?? ENERGY_DETAILS),
-    getStorageData: () => record('storage', overrides.storage ?? STORAGE_DATA),
+    mode: overrides.mode ?? 'fleet',
+    monthlyCredits: 2000,
+    dailyRequestLimit: overrides.dailyRequestLimit ?? 64,
+    usage: { day: '2024-05-18', count: 0, limit: 64, remaining: 64 },
+    getSites: () => record('sites', pick('sites', [{ siteId: SITE_ID, name: 'Maison' }])),
+    getSiteDetails: () => record('details', pick('details', SITE_DETAILS)),
+    getOverview: () => record('overview', pick('overview', OVERVIEW)),
+    getPower: () => record('power', pick('power', POWER)),
+    getEnergy: () => record('energy', pick('energy', ENERGY_MONTHLY)),
+    getLifetimeEnergy: () => record('lifetime', pick('lifetime', LIFETIME_ENERGY)),
+    getDevices: () => record('devices', pick('devices', DEVICES)),
+    getMetersTelemetry: () => record('meters', pick('meters', METERS_TELEMETRY)),
+    getMetersLifetimeEnergy: () => record('importCounter', pick('importCounter', METERS_LIFETIME)),
+    getStorageTelemetry: () => record('storage', pick('storage', STORAGE_TELEMETRY)),
+    getStorageStatus: () => record('storageStatus', pick('storageStatus', STORAGE_STATUS)),
   };
 }
 
 // -----------------------------------------------------------------------------
-// A REAL site: one SE3000H inverter alone — no meter, no battery, no tariff —
-// on an October evening (the answers of the first real test, 2026-10-09; site
-// id and serial number replaced). What it teaches:
-//   - `currentPowerFlow` still lists GRID and LOAD, with a status and NO
-//     `currentPower`: the slots of the diagram, not measurements;
-//   - `energyDetails` lists every meter, with dates and no `value`, except
-//     Production;
-//   - `overview` reports `lifeTimeData.revenue: 0.0` and no daily revenue: the
-//     owner never entered a feed-in tariff.
+// A lone inverter — no meter, no battery — on an October evening: the SE3000H
+// of the first real test (2026-10-09, V1), rewritten in the V2 shapes. The
+// figures are that site's (production 9.844 kWh that day, 26,618.8 kWh
+// lifetime); the V2 envelopes follow the specification, not a recording:
+//   - the inventory asked for meters and batteries is empty;
+//   - the overview has no consumption or grid figure;
+//   - the inverter sleeps: its power buckets are `null`.
 // -----------------------------------------------------------------------------
 
 export const INVERTER_ONLY_SITE_DETAILS = {
-  id: 1000001,
+  siteId: 1000001,
   name: 'Onduleur seul',
   peakPower: 3,
-  currency: 'EUR',
-  status: 'Active',
-  location: { country: 'France', timeZone: 'Europe/Paris' },
-};
-
-export const INVERTER_ONLY_POWER_FLOW = {
-  updateRefreshRate: 3,
-  unit: 'kW',
-  connections: [],
-  GRID: { status: 'Inactive' },
-  LOAD: { status: 'Inactive' },
-  PV: { status: 'Idle', currentPower: 0.0 },
+  installationDate: '2019-04-02T00:00:00Z',
+  location: { country: 'France', timezone: 'Europe/Paris' },
+  activationStatus: 'ACTIVE',
 };
 
 export const INVERTER_ONLY_OVERVIEW = {
-  lastUpdateTime: '2026-10-09 19:05:38',
-  lifeTimeData: { energy: 2.6618836e7, revenue: 0.0 },
-  lastYearData: { energy: 3052537.0 },
-  lastMonthData: { energy: 59764.0 },
-  lastDayData: { energy: 9844.0 },
-  currentPower: { power: 0.0 },
-  measuredBy: '',
+  siteId: 1000001,
+  production: { total: 9844.0, unit: 'WH', toSelfConsumption: null, toStorage: null, toGrid: null },
+  consumption: { total: null, unit: 'WH', fromPv: null, fromStorage: null, fromGrid: null },
 };
 
-export const INVERTER_ONLY_ENERGY_DETAILS = {
-  timeUnit: 'DAY',
-  unit: 'Wh',
-  meters: [
-    { type: 'Consumption', values: [{ date: '2026-10-09 00:00:00' }] },
-    { type: 'FeedIn', values: [{ date: '2026-10-09 00:00:00' }] },
-    { type: 'Purchased', values: [{ date: '2026-10-09 00:00:00' }] },
-    { type: 'SelfConsumption', values: [{ date: '2026-10-09 00:00:00' }] },
-    { type: 'Production', values: [{ date: '2026-10-09 00:00:00', value: 9844.0 }] },
+export const INVERTER_ONLY_POWER = {
+  period: { from: '2026-10-09T18:20:00+02:00', to: '2026-10-09T19:05:00+02:00' },
+  unit: 'W',
+  resolution: 'QUARTER_HOUR',
+  values: [
+    { timestamp: '2026-10-09T18:15:00+02:00', value: null },
+    { timestamp: '2026-10-09T18:30:00+02:00', value: null },
+    { timestamp: '2026-10-09T18:45:00+02:00', value: null },
   ],
 };
 
-/** `/site/{id}/inventory` of the same site (not called by the integration). */
-export const INVERTER_ONLY_INVENTORY = {
-  inverters: [
-    {
-      name: 'Inverter 1',
-      manufacturer: 'SolarEdge',
-      communicationMethod: 'ETHERNET',
-      connectedOptimizers: 8,
-      partNumber: 'SE3000H-RW000NNN2',
-      SN: 'XXXXXXXX-XX',
-    },
+export const INVERTER_ONLY_ENERGY_MONTHLY = {
+  unit: 'WH',
+  resolution: 'MONTH',
+  values: [
+    { timestamp: '2026-01-01T00:00:00+01:00', value: 100_000 },
+    { timestamp: '2026-09-01T00:00:00+02:00', value: 2_892_773 },
+    { timestamp: '2026-10-01T00:00:00+02:00', value: 59_764 },
   ],
-  batteries: [],
-  gateways: [],
-  sensors: [],
-  meters: [],
 };
+
+export const INVERTER_ONLY_LIFETIME = { energy: 2.6618836e7, unit: 'WH' };
 
 /** The client stub of `createFakeClient`, answering as the inverter-only site. */
 export function createInverterOnlyClient() {
   return createFakeClient({
     details: INVERTER_ONLY_SITE_DETAILS,
-    flow: INVERTER_ONLY_POWER_FLOW,
+    devices: [],
     overview: INVERTER_ONLY_OVERVIEW,
-    energy: INVERTER_ONLY_ENERGY_DETAILS,
-    sites: [{ id: INVERTER_ONLY_SITE_DETAILS.id, name: INVERTER_ONLY_SITE_DETAILS.name }],
+    power: INVERTER_ONLY_POWER,
+    energy: INVERTER_ONLY_ENERGY_MONTHLY,
+    lifetime: INVERTER_ONLY_LIFETIME,
+    sites: [{ siteId: INVERTER_ONLY_SITE_DETAILS.siteId, name: INVERTER_ONLY_SITE_DETAILS.name }],
   });
 }
+
+/**
+ * The snapshot the service builds from the fixtures above (asserted in
+ * service.test.js), for the device and widget tests that need one directly.
+ */
+export const SNAPSHOT = {
+  flow: {
+    pv: 4200,
+    load: 1100,
+    grid: -1600,
+    battery: { power: 1500, level: 62, energyStored: 5.95, state: 'charging', critical: false },
+  },
+  overview: {
+    currentPower: null,
+    energyToday: 21.4,
+    energyMonth: 612,
+    energyYear: 4120,
+    energyLifetime: 18540,
+    revenueToday: null,
+    revenueLifetime: null,
+  },
+  energy: {
+    production: 21.4,
+    feedIn: 14.1,
+    consumption: 9.8,
+    selfConsumption: 7.3,
+    purchased: 2.5,
+  },
+  storage: { level: 62, energyStored: 5.95, temperature: 25.1 },
+  gridImportIndex: 3456.7,
+  fetchedAt: '2024-05-18T13:42:00.000Z',
+};

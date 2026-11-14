@@ -1,5 +1,6 @@
 // -----------------------------------------------------------------------------
-// Pure translation layer: SolarEdge payloads -> the numbers Gladys publishes.
+// Pure translation layer: SolarEdge Monitoring API V2 payloads -> the numbers
+// Gladys publishes.
 //
 // Everything here is a pure function of an API response — no network, no cache,
 // no clock beyond what is passed in. That is what makes the tricky parts (unit
@@ -10,9 +11,13 @@
 //   - directional powers are SIGNED, from the home's point of view:
 //       grid    > 0 imported from the grid   | < 0 exported to the grid
 //       battery > 0 charging (energy stored) | < 0 discharging (energy used)
+//
+// V2 series share one envelope, `{ unit, values: [{ timestamp, value }] }`,
+// where `value` is `null` for a bucket with no data; the last bucket of a
+// window covering "now" is the one still filling up.
 // -----------------------------------------------------------------------------
 
-/** Battery states, published as a text feature and used to sign its power. */
+/** Battery states, published as a text feature and used by the battery widget. */
 export const BATTERY_STATES = {
   CHARGING: 'charging',
   DISCHARGING: 'discharging',
@@ -20,20 +25,18 @@ export const BATTERY_STATES = {
   DISABLED: 'disabled',
 };
 
-/** Meters requested to `energyDetails` for the daily breakdown. */
-export const ENERGY_METERS = [
-  'PRODUCTION',
-  'CONSUMPTION',
-  'SELFCONSUMPTION',
-  'FEEDIN',
-  'PURCHASED',
-];
+/** Below this, a battery power is noise: the pack is idle. */
+const BATTERY_IDLE_WATTS = 20;
+/**
+ * V2 has no "critical" flag any more (V1's `currentPowerFlow` had one, and the
+ * live power flow is now a paid Advanced Monitoring endpoint): the "Battery
+ * low" feature reads a state of charge at or below this level.
+ */
+export const BATTERY_LOW_LEVEL = 10;
 
 /**
- * Convert a power reading to watts. `currentPowerFlow` announces its own unit
- * ("W" or "kW" depending on the site), so it must never be assumed.
- * @param {number} value
- * @param {string} [unit] unit announced by the API
+ * Convert a power reading to watts. V2 announces the unit of every series
+ * (`W`, `KW`, `MW`), in upper case.
  */
 export function toWatts(value, unit = 'W') {
   if (!hasValue(value)) {
@@ -48,15 +51,27 @@ export function toWatts(value, unit = 'W') {
       return number * 1000;
     case 'mw':
       return number * 1_000_000;
-    case 'w':
     default:
       return number;
   }
 }
 
+/** An energy in its announced unit (`WH`, `KWH`, `MWH`, `GWH`) -> kWh, 2 decimals. */
+export function toKwh(value, unit = 'WH') {
+  if (!hasValue(value) || !Number.isFinite(Number(value))) {
+    return null;
+  }
+  const factor = { wh: 0.001, kwh: 1, mwh: 1000, gwh: 1_000_000 }[
+    String(unit ?? 'WH')
+      .trim()
+      .toLowerCase()
+  ];
+  return round(Number(value) * (factor ?? 0.001), 2);
+}
+
 /** Watt-hours -> kilowatt-hours, rounded to 2 decimals (what a UI shows). */
 export function whToKwh(value) {
-  return hasValue(value) ? round(Number(value) / 1000, 2) : null;
+  return toKwh(value, 'WH');
 }
 
 /**
@@ -80,239 +95,231 @@ function hasValue(value) {
   return value !== null && value !== undefined && value !== '' && typeof value !== 'boolean';
 }
 
-/**
- * Normalize `GET /site/{id}/currentPowerFlow`.
- *
- * The API reports every power as a POSITIVE magnitude and describes the
- * direction separately, in the `connections` array (`{ from: 'GRID', to:
- * 'Load' }`, with inconsistent casing). We fold both into a signed value.
- *
- * @returns {null | {pv: number|null, load: number|null, grid: number|null,
- *   battery: null | {power: number|null, level: number|null, state: string,
- *   critical: boolean}}}
- */
-export function parsePowerFlow(flow) {
-  // A site without the matching hardware answers `{}`: not an error.
-  if (!flow || typeof flow !== 'object' || Object.keys(flow).length === 0) {
-    return null;
-  }
-
-  const unit = flow.unit ?? 'W';
-  const connections = Array.isArray(flow.connections) ? flow.connections : [];
-  const flowsFrom = (node) =>
-    connections.some((c) => String(c?.from ?? '').toLowerCase() === node.toLowerCase());
-  const flowsTo = (node) =>
-    connections.some((c) => String(c?.to ?? '').toLowerCase() === node.toLowerCase());
-
-  const pv = flow.PV ? toWatts(flow.PV.currentPower, unit) : null;
-  const load = flow.LOAD ? toWatts(flow.LOAD.currentPower, unit) : null;
-
-  // A node without `currentPower` is NOT a node at 0 W. A site with no meter
-  // still answers `GRID: { status: 'Inactive' }` and `LOAD: { status:
-  // 'Inactive' }` (seen on a real SE3000H alone): the API lists the slots of
-  // its diagram, not what is measured. Only a number makes a reading.
-  let grid = null;
-  const gridWatts = flow.GRID ? toWatts(flow.GRID.currentPower, unit) : null;
-  if (gridWatts !== null) {
-    const magnitude = Math.abs(gridWatts);
-    // Exporting is the only case that flips the sign; when the grid appears on
-    // neither side of a connection nothing is flowing, and 0 is the truth.
-    grid = flowsTo('grid') && !flowsFrom('grid') ? -magnitude : magnitude;
-  }
-
-  let battery = null;
-  if (flow.STORAGE) {
-    const state = parseBatteryState(flow.STORAGE.status, { flowsFrom, flowsTo });
-    const watts = toWatts(flow.STORAGE.currentPower, unit);
-    const magnitude = watts === null ? null : Math.abs(watts);
-    let power = magnitude;
-    if (state === BATTERY_STATES.IDLE || state === BATTERY_STATES.DISABLED) {
-      // The status itself says nothing flows: 0 is a reading here.
-      power = 0;
-    } else if (magnitude !== null && state === BATTERY_STATES.DISCHARGING) {
-      power = -magnitude;
+/** The last bucket of a series that holds a number, or `null`. */
+export function lastValue(series) {
+  const values = Array.isArray(series?.values) ? series.values : [];
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    if (hasValue(values[i]?.value) && Number.isFinite(Number(values[i].value))) {
+      return Number(values[i].value);
     }
-    battery = {
-      power,
-      level: round(flow.STORAGE.chargeLevel, 0),
-      state,
-      critical: flow.STORAGE.critical === true,
-    };
   }
+  return null;
+}
 
-  return { pv: round(pv, 0), load: round(load, 0), grid: round(grid, 0), battery };
+/** Sum of `pick(device)` over the devices that report it, `null` when none does. */
+function sumOver(devices, pick) {
+  let sum = null;
+  for (const device of devices) {
+    const value = pick(device);
+    if (value !== null) {
+      sum = (sum ?? 0) + value;
+    }
+  }
+  return sum;
 }
 
 /**
- * Map the SolarEdge battery status to our own vocabulary. The status string is
- * authoritative when present; the connections are the fallback for firmwares
- * that leave it empty.
+ * Normalize `GET /sites/{id}` (the V2 site details). The rest of the
+ * integration reads `id` and `location.timeZone`, V1's names: V2 calls them
+ * `siteId` and `location.timezone`.
  */
-function parseBatteryState(status, { flowsFrom, flowsTo }) {
-  switch (String(status ?? '').toLowerCase()) {
-    case 'charging':
-      return BATTERY_STATES.CHARGING;
-    case 'discharging':
-      return BATTERY_STATES.DISCHARGING;
-    case 'disabled':
-      return BATTERY_STATES.DISABLED;
-    case 'idle':
-      return BATTERY_STATES.IDLE;
-    default:
-      if (flowsTo('storage')) {
-        return BATTERY_STATES.CHARGING;
-      }
-      if (flowsFrom('storage')) {
-        return BATTERY_STATES.DISCHARGING;
-      }
-      return BATTERY_STATES.IDLE;
+export function parseSiteDetails(details) {
+  if (!details || typeof details !== 'object') {
+    return {};
   }
+  const location = details.location ?? {};
+  return {
+    ...details,
+    id: details.siteId ?? details.id,
+    location: { ...location, timeZone: location.timeZone ?? location.timezone },
+  };
 }
 
 /**
- * Normalize `GET /site/{id}/overview` — the production totals, in Wh in the
- * payload, published in kWh.
+ * Normalize `GET /sites/{id}/overview` without a period: today's balance, from
+ * the site's local midnight to now.
+ *
+ *   production.total             -> production today
+ *   production.toGrid            -> exported (feed-in)
+ *   consumption.total            -> consumption
+ *   consumption.fromPv/Storage   -> self-consumption (what the panels and the
+ *                                   battery covered: V1's SelfConsumption meter)
+ *   consumption.fromGrid         -> imported (purchased)
+ *
+ * The consumption and grid figures need a meter: without one they stay `null`.
  */
 export function parseOverview(overview) {
   if (!overview || typeof overview !== 'object') {
     return null;
   }
+  const production = overview.production ?? {};
+  const consumption = overview.consumption ?? {};
+  const pUnit = production.unit ?? 'WH';
+  const cUnit = consumption.unit ?? 'WH';
+  const fromPv = toKwh(consumption.fromPv, cUnit);
+  const fromStorage = toKwh(consumption.fromStorage, cUnit);
   return {
-    currentPower: round(overview.currentPower?.power, 0),
-    energyToday: whToKwh(overview.lastDayData?.energy),
-    energyMonth: whToKwh(overview.lastMonthData?.energy),
-    energyYear: whToKwh(overview.lastYearData?.energy),
-    energyLifetime: whToKwh(overview.lifeTimeData?.energy),
-    revenueToday: round(overview.lastDayData?.revenue, 2),
-    revenueLifetime: round(overview.lifeTimeData?.revenue, 2),
-    lastUpdateTime: overview.lastUpdateTime ?? null,
+    production: toKwh(production.total, pUnit),
+    feedIn: toKwh(production.toGrid, pUnit),
+    consumption: toKwh(consumption.total, cUnit),
+    selfConsumption:
+      fromPv === null && fromStorage === null ? null : round((fromPv ?? 0) + (fromStorage ?? 0), 2),
+    purchased: toKwh(consumption.fromGrid, cUnit),
+  };
+}
+
+/** `GET /sites/{id}/power`: the latest PV power, in W. */
+export function parsePower(body) {
+  return round(toWatts(lastValue(body), body?.unit ?? 'W'), 0);
+}
+
+/**
+ * `GET /sites/{id}/meters/telemetry` (QUARTER_HOUR): the latest power of every
+ * meter, summed per direction. `grid` is signed: import minus export.
+ *
+ * @returns {{ pv: number|null, load: number|null, grid: number|null }}
+ */
+export function parseMetersTelemetry(body) {
+  const meters = Object.values(body?.meters ?? {});
+  const power = (meter, key) => toWatts(lastValue(meter?.[key]), meter?.[key]?.unit ?? 'W');
+  const imported = sumOver(meters, (m) => power(m, 'importPower'));
+  const exported = sumOver(meters, (m) => power(m, 'exportPower'));
+  return {
+    pv: round(
+      sumOver(meters, (m) => power(m, 'productionPower')),
+      0,
+    ),
+    load: round(
+      sumOver(meters, (m) => power(m, 'consumptionPower')),
+      0,
+    ),
+    grid:
+      imported === null && exported === null ? null : round((imported ?? 0) - (exported ?? 0), 0),
   };
 }
 
 /**
- * Normalize `GET /site/{id}/energyDetails`, summing every bucket of the
- * requested period (we ask for a single DAY bucket, but a site can answer with
- * several when the period straddles a boundary).
+ * `GET /sites/{id}/storage/telemetry` (QUARTER_HOUR): the battery as one pack.
+ * Several packs share one installation: powers and stored energies add up,
+ * the state of charge is averaged.
  *
- * @returns {null | Record<'production'|'consumption'|'selfConsumption'|'feedIn'|'purchased', number|null>}
+ * @returns {null | { power: number|null, level: number|null, energyStored: number|null,
+ *   state: string, critical: boolean }}
  */
-export function parseEnergyDetails(details) {
-  if (!details || !Array.isArray(details.meters)) {
+export function parseStorageTelemetry(body) {
+  const packs = Object.values(body?.storage ?? {});
+  if (packs.length === 0) {
     return null;
   }
-  const unit = String(details.unit ?? 'Wh').toLowerCase();
-  const divisor = unit === 'kwh' ? 1 : 1000;
+  const watts = (pack, key) => toWatts(lastValue(pack?.[key]), pack?.[key]?.unit ?? 'W');
+  const charge = sumOver(packs, (p) => watts(p, 'chargePower'));
+  const discharge = sumOver(packs, (p) => watts(p, 'dischargePower'));
+  const levels = packs.map((p) => lastValue(p?.stateOfEnergy)).filter((v) => v !== null);
+  const stored = sumOver(packs, (p) => {
+    const value = lastValue(p?.remainingEnergy);
+    return value === null ? null : toKwh(value, p.remainingEnergy?.unit ?? 'WH');
+  });
 
-  const totals = {
-    production: null,
-    consumption: null,
-    selfConsumption: null,
-    feedIn: null,
-    purchased: null,
-  };
-
-  for (const meter of details.meters) {
-    const key = METER_KEYS[String(meter?.type ?? '').toLowerCase()];
-    if (!key) {
-      continue;
-    }
-    // A meter with no reading at all stays `null` (nothing to publish), which
-    // is not the same as a meter reporting 0 kWh.
-    let sum = null;
-    for (const point of meter.values ?? []) {
-      if (Number.isFinite(Number(point?.value))) {
-        sum = (sum ?? 0) + Number(point.value);
-      }
-    }
-    totals[key] = sum === null ? null : round(sum / divisor, 2);
-  }
-
-  return totals;
-}
-
-const METER_KEYS = {
-  production: 'production',
-  consumption: 'consumption',
-  selfconsumption: 'selfConsumption',
-  feedin: 'feedIn',
-  purchased: 'purchased',
-};
-
-/**
- * Normalize `GET /site/{id}/storageData`: keep the most recent telemetry of
- * each battery and aggregate them (a site can hold several packs).
- */
-export function parseStorageData(storageData) {
-  const batteries = storageData?.batteries;
-  if (!Array.isArray(batteries) || batteries.length === 0) {
+  const level = levels.length ? round(levels.reduce((a, b) => a + b, 0) / levels.length, 0) : null;
+  if (charge === null && discharge === null && level === null) {
     return null;
   }
-
-  let energyStored = null;
-  let temperature = null;
-  let temperatureCount = 0;
-  let level = null;
-  let levelCount = 0;
-
-  for (const battery of batteries) {
-    const telemetries = Array.isArray(battery?.telemetries) ? battery.telemetries : [];
-    const last = telemetries[telemetries.length - 1];
-    if (!last) {
-      continue;
-    }
-    // `fullPackEnergyAvailable` is the usable capacity, `batteryState` the
-    // state of charge in %: their product is the energy actually stored.
-    const capacity = Number(last.fullPackEnergyAvailable);
-    const state = Number(last.batteryState);
-    if (Number.isFinite(capacity) && Number.isFinite(state)) {
-      energyStored = (energyStored ?? 0) + (capacity * state) / 100;
-    }
-    if (Number.isFinite(state)) {
-      level = (level ?? 0) + state;
-      levelCount += 1;
-    }
-    if (Number.isFinite(Number(last.internalTemp))) {
-      temperature = (temperature ?? 0) + Number(last.internalTemp);
-      temperatureCount += 1;
-    }
+  const power = charge === null && discharge === null ? null : (charge ?? 0) - (discharge ?? 0);
+  let state = BATTERY_STATES.IDLE;
+  if (power !== null && power > BATTERY_IDLE_WATTS) {
+    state = BATTERY_STATES.CHARGING;
+  } else if (power !== null && power < -BATTERY_IDLE_WATTS) {
+    state = BATTERY_STATES.DISCHARGING;
   }
-
   return {
-    energyStored: energyStored === null ? null : whToKwh(energyStored),
-    // Averaged: several packs of the same installation share one charge level.
-    level: level === null ? null : round(level / levelCount, 0),
-    temperature: temperature === null ? null : round(temperature / temperatureCount, 1),
+    power: state === BATTERY_STATES.IDLE && power !== null ? 0 : round(power, 0),
+    level,
+    energyStored: round(stored, 2),
+    state,
+    critical: level !== null && level <= BATTERY_LOW_LEVEL,
   };
+}
+
+/** `GET /sites/{id}/storage/status`: the average internal temperature, in °C. */
+export function parseStorageStatus(body) {
+  const temperatures = Object.values(body?.storage ?? {})
+    .map((pack) => lastValue(pack?.internalTemperature))
+    .filter((v) => v !== null);
+  if (temperatures.length === 0) {
+    return null;
+  }
+  return round(temperatures.reduce((a, b) => a + b, 0) / temperatures.length, 1);
 }
 
 /**
- * Format a date the way the Monitoring API expects it (`YYYY-MM-DD HH:mm:ss`),
- * expressed in the SITE's timezone — SolarEdge interprets the period in local
- * site time, so using UTC would shift "today" by the site's offset.
+ * `GET /sites/{id}/energy?resolution=MONTH`: the production of the site's
+ * current month and of its current year, in kWh. Timestamps are in the site's
+ * local time (`2026-11-01T00:00:00+01:00`), so the buckets are picked by their
+ * local date: the request may start a day early to be sure to cover January 1.
  *
- * @param {Date} date
- * @param {string} [timeZone] IANA timezone from the site details
+ * @param {object} body
+ * @param {string} day the site's current day, `YYYY-MM-DD`
  */
-export function formatSiteDateTime(date, timeZone) {
-  const parts = siteDateParts(date, timeZone);
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+export function parseMonthlyEnergy(body, day) {
+  const values = Array.isArray(body?.values) ? body.values : [];
+  const unit = body?.unit ?? 'WH';
+  const year = day.slice(0, 4);
+  const month = day.slice(0, 7);
+  let yearTotal = null;
+  let monthTotal = null;
+  for (const bucket of values) {
+    const stamp = String(bucket?.timestamp ?? '');
+    const kwh = toKwh(bucket?.value, unit);
+    if (kwh === null || !stamp.startsWith(year)) {
+      continue;
+    }
+    yearTotal = (yearTotal ?? 0) + kwh;
+    if (stamp.startsWith(month)) {
+      monthTotal = (monthTotal ?? 0) + kwh;
+    }
+  }
+  return { month: round(monthTotal, 2), year: round(yearTotal, 2) };
 }
 
-/** Period covering the site's current day, from local midnight to now. */
-export function siteDayRange(date, timeZone) {
-  const parts = siteDateParts(date, timeZone);
+/** `GET /sites/{id}/lifetime-energy`: the onboard production counter, in kWh. */
+export function parseLifetimeEnergy(body) {
+  return toKwh(body?.energy, body?.unit ?? 'WH');
+}
+
+/**
+ * `GET /sites/{id}/meters/lifetime-energy?meters=PURCHASED`: the grid import
+ * counter, in kWh — the latest reading of every meter, summed.
+ */
+export function parseImportCounter(body) {
+  const meters = Array.isArray(body?.meters) ? body.meters : [];
+  return round(
+    sumOver(meters, (meter) => {
+      const value = lastValue({ values: meter?.importEnergy });
+      return value === null ? null : toKwh(value, meter.unit ?? 'WH');
+    }),
+    2,
+  );
+}
+
+/**
+ * `GET /sites/{id}/devices?types=METER&types=BATTERY`: what the site holds.
+ * @returns {{ meters: number, productionMeter: boolean, batteries: number }}
+ */
+export function parseDevices(body) {
+  const devices = (Array.isArray(body) ? body : (body?.devices ?? [])).filter(
+    (d) => d && d.active !== false,
+  );
+  const meters = devices.filter((d) => d.type === 'METER');
   return {
-    startTime: `${parts.year}-${parts.month}-${parts.day} 00:00:00`,
-    endTime: `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`,
+    meters: meters.length,
+    productionMeter: meters.some((m) => String(m.meterType ?? '').toLowerCase() === 'production'),
+    batteries: devices.filter((d) => d.type === 'BATTERY').length,
   };
 }
 
-/** Period covering the last `minutes` minutes, in site local time. */
-export function siteRecentRange(date, timeZone, minutes = 30) {
-  return {
-    startTime: formatSiteDateTime(new Date(date.getTime() - minutes * 60_000), timeZone),
-    endTime: formatSiteDateTime(date, timeZone),
-  };
+/** A V2 `from`/`to` value: an ISO 8601 instant in UTC, to the second. */
+export function isoInstant(date) {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 function siteDateParts(date, timeZone) {
@@ -320,9 +327,6 @@ function siteDateParts(date, timeZone) {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
     hourCycle: 'h23',
   };
   let formatter;
@@ -350,13 +354,4 @@ export function siteDay(date, timeZone) {
 export function addDays(day, days) {
   const [year, month, date] = day.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, date + days)).toISOString().slice(0, 10);
-}
-
-/**
- * The commissioning day of the site (`installationDate` of the site details,
- * `YYYY-MM-DD`, sometimes with a time), or `null` when it is missing or odd.
- */
-export function installationDay(site) {
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(site?.installationDate ?? ''));
-  return match ? match[1] : null;
 }

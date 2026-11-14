@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // The first real site: an SE3000H inverter alone, no meter, no battery, no
-// tariff (answers of 2026-10-09, anonymized in the fixtures).
+// tariff (its 2026-10-09 figures, in the V2 shapes of the specification).
 //
 // Version 1.1.0 created a "Grid" device stuck at 0 W and a "Revenue today"
 // feature that never held a value on this site, because it tested whether
@@ -23,7 +23,6 @@ import {
 } from '../src/widgets.js';
 import { createFakeGladys } from './helpers/fakeGladys.js';
 import {
-  INVERTER_ONLY_INVENTORY,
   INVERTER_ONLY_SITE_DETAILS,
   createInverterOnlyClient,
 } from './helpers/solaredgeFixtures.js';
@@ -72,22 +71,27 @@ test('inverter alone: only the production device, no grid, no revenue', async ()
   );
 });
 
-test('inverter alone: the detection agrees with the inventory, without calling it', async () => {
+test('inverter alone: the detection costs the inventory and one cycle', async () => {
   const { context, client } = await bootInverterOnlySite();
-  // The inventory says no meter and no battery: the answers we already pay
-  // for (flow, overview, energyDetails) are enough to reach the same verdict.
-  assert.equal(INVERTER_ONLY_INVENTORY.meters.length, 0);
-  assert.equal(INVERTER_ONLY_INVENTORY.batteries.length, 0);
   assert.equal(context.capabilities.grid || context.capabilities.consumption, false);
   assert.equal(context.capabilities.battery, false);
-  assert.deepEqual(client.calls.sort(), ['details', 'energy', 'flow', 'overview', 'sites']);
+  // No meter, no battery in the inventory: no telemetry call at all.
+  assert.deepEqual(client.calls, [
+    'sites',
+    'details',
+    'devices',
+    'overview',
+    'power',
+    'energy',
+    'lifetime',
+  ]);
 });
 
 test('inverter alone: the GRID and LOAD slots without a reading are null, not 0 W', async () => {
   const { service } = await bootInverterOnlySite();
   const { flow, energy } = await service.getSnapshot();
 
-  assert.equal(flow.pv, 0, 'an idle inverter at night does read 0 W');
+  assert.equal(flow.pv, 0, 'a sleeping inverter at night does read 0 W');
   assert.equal(flow.load, null);
   assert.equal(flow.grid, null);
   assert.deepEqual(energy, {
@@ -106,7 +110,7 @@ test('inverter alone: a poll publishes power, today and the lifetime index — n
     await blueprint.onPoll(gladys, context, snapshot);
   }
 
-  const ids = `ext:solaredge:solaredge-production:${INVERTER_ONLY_SITE_DETAILS.id}`;
+  const ids = `ext:solaredge:solaredge-production:${INVERTER_ONLY_SITE_DETAILS.siteId}`;
   assert.deepEqual(gladys.published, [
     { featureExternalId: `${ids}:power`, state: 0 },
     { featureExternalId: `${ids}:energy-today`, state: 9.84 },

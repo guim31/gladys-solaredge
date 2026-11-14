@@ -2,69 +2,112 @@
 // SolarEdge service: the ONE object that owns the site, its capabilities and
 // the shared snapshot every device reads from.
 //
-// Why a shared snapshot? Gladys polls each device independently: with four
-// devices (production, consumption, grid, battery) a naive implementation would
-// fire four times the API calls and burn the 300 requests/day budget in a few
-// hours. Here, the first device of a polling cycle triggers ONE refresh, the
-// three others read the freshly cached values — and concurrent calls share the
-// same in-flight promise instead of racing.
+// Why a shared snapshot? Every device (production, consumption, grid, battery)
+// reads the same SolarEdge figures: one refresh feeds them all, and concurrent
+// callers share the same in-flight promise instead of racing.
 //
-// Cost of one cycle: 2 requests (`currentPowerFlow` + `overview`), plus the
-// slower `energyDetails` (and optionally `storageData`) refresh, plus one
-// request a day for the grid import index of a metered site.
+// Cost of one cycle on the Monitoring API V2 (1 credit per call):
+//   - `overview`                 today's balance (production, consumption,
+//                                imported, exported, self-consumption);
+//   - `power`                    the live PV power — skipped when a production
+//                                meter already reports it;
+//   - `meters/telemetry`         live home and grid powers (sites with a meter);
+//   - `storage/telemetry`        battery power, charge, stored energy;
+//   - `storage/status`           battery temperature (optional setting).
+// Once a day (site day): `energy` by month (this month, this year) and
+// `lifetime-energy` (the lifetime production counter), plus
+// `meters/lifetime-energy` for the grid import index of a metered site.
+//
+// The Free tier gives 2,000 credits a month: `refreshInterval()` stretches the
+// user's interval until a month of cycles fits in the allowance.
 // -----------------------------------------------------------------------------
 
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { SolarEdgeClient, SolarEdgeError, ERROR_CODES } from './client.js';
 import {
-  ENERGY_METERS,
   addDays,
-  installationDay,
-  parseEnergyDetails,
+  isoInstant,
+  parseDevices,
+  parseImportCounter,
+  parseLifetimeEnergy,
+  parseMetersTelemetry,
+  parseMonthlyEnergy,
   parseOverview,
-  parsePowerFlow,
-  parseStorageData,
+  parsePower,
+  parseSiteDetails,
+  parseStorageStatus,
+  parseStorageTelemetry,
   round,
   siteDay,
-  siteDayRange,
-  siteRecentRange,
 } from './snapshot.js';
 
 const logger = createLogger({ name: 'solaredge' });
+
+/** Live readings: the last 45 minutes hold the latest complete 15-minute bucket. */
+const LIVE_WINDOW_MS = 45 * 60_000;
+/**
+ * A failed once-a-day read is retried at most this often — and not before the
+ * next site day when SolarEdge refused it outright (400, 403, 404): retrying a
+ * refusal every few hours would eat the day's budget, then the live cycles.
+ */
+const DAILY_RETRY_MS = 3 * 60 * 60_000;
+const REFUSED = new Set([400, 403, 404]);
+/**
+ * Requests left aside every day for the user's own buttons ("Test the
+ * connection", "Refresh now") and a restart (site details, detection).
+ */
+export const DAILY_RESERVE = 6;
 
 export class SolarEdgeService {
   /**
    * @param {object} config normalized integration configuration
    * @param {object} [deps]
    * @param {SolarEdgeClient} [deps.client] injectable client, for tests
+   * @param {(tokens: object) => Promise<void>} [deps.onTokens] persists renewed OAuth tokens
    * @param {() => Date} [deps.now] injectable clock, for tests
    */
-  constructor(config, { client, now = () => new Date() } = {}) {
+  constructor(
+    config,
+    { client, onTokens, onImportOffset = async () => {}, now = () => new Date() } = {},
+  ) {
     this.config = config;
     this.now = now;
     this.client =
       client ??
       new SolarEdgeClient({
         apiKey: config.api_key,
-        dailyRequestLimit: config.daily_request_limit,
+        oauth:
+          config.auth_mode === 'oauth'
+            ? {
+                clientId: config.client_id,
+                clientSecret: config.client_secret,
+                tokens: config.oauth_tokens,
+              }
+            : null,
+        onTokens,
+        monthlyCredits: config.monthly_credits,
         now,
       });
 
     this.siteId = null;
     this.site = null; // details: name, timezone, peak power
+    this.hardware = null; // { meters, productionMeter, batteries }
     this.capabilities = null;
     this.snapshot = null;
     this.snapshotAt = 0;
-    this.energyAt = 0;
-    this.storageAt = 0;
-    // Site day the cached `energyDetails` breakdown covers.
-    this.energyDay = null;
-    // Grid import index: purchased energy up to the end of the day before
-    // `day`, the full past years of it, and the highest index published.
-    this.importBase = null; // { day, kwh }
-    this.importPastYears = null; // { year, kwh }
+    // Once-a-day reads, tied to a site day: `base + today` gives the month,
+    // the year, the lifetime production and the grid import index all day.
+    this.daily = null; // { day, month, year, lifetime, import }
+    this.dailyFailedAt = 0;
+    this.dailyRefusedDay = null;
+    this.lifetimeIndex = null;
     this.importIndex = null;
-    this.importFailedDay = null; // a day whose history failed: not retried
+    // Continuity of the grid import index with versions 1.x (see #gridImportIndex).
+    this.importOffset = Number.isFinite(config.import_index_offset)
+      ? config.import_index_offset
+      : null;
+    this.importSeed = null;
+    this.onImportOffset = onImportOffset;
     this.inFlight = null;
     this.lastError = null;
     // Endpoints whose last call failed: a failure is logged once, at `warn`,
@@ -75,7 +118,8 @@ export class SolarEdgeService {
   /** Apply a configuration change that does NOT require a new client. */
   updateConfig(config) {
     this.config = config;
-    this.client.dailyRequestLimit = config.daily_request_limit;
+    this.client.monthlyCredits = config.monthly_credits;
+    this.client.adoptTokens?.(config.oauth_tokens);
   }
 
   /** Daily budget state, surfaced by the "API usage" action. */
@@ -87,17 +131,49 @@ export class SolarEdgeService {
    * The last snapshot read, however old — or `null` before the first one.
    *
    * This is what the dashboard widgets read: a widget is pulled by every open
-   * dashboard, and letting it refresh SolarEdge would spend the 300 requests/day
-   * budget on page loads. The snapshot only moves on the polling schedule (and
-   * on "Refresh now"); the live tiles follow the published states on their own.
+   * dashboard, and letting it refresh SolarEdge would spend the monthly
+   * credits on page loads.
    */
   get lastSnapshot() {
     return this.snapshot;
   }
 
+  /** Requests one refresh cycle costs on this site. */
+  get callsPerCycle() {
+    const hw = this.hardware ?? { meters: 0, productionMeter: false, batteries: 0 };
+    let calls = 1; // overview
+    if (hw.meters > 0) {
+      calls += 1;
+    }
+    if (!hw.productionMeter) {
+      calls += 1; // power
+    }
+    if (hw.batteries > 0) {
+      calls += this.config.storage_details ? 2 : 1;
+    }
+    return calls;
+  }
+
+  /** Requests the once-a-day reads cost on this site. */
+  get callsPerDay() {
+    return 2 + (this.capabilities?.gridImport ? 1 : 0);
+  }
+
   /**
-   * Resolve the site to work on: the one configured by the user, or — when the
-   * field is left empty — the single site the API key gives access to.
+   * The refresh interval actually used, in seconds: the user's, stretched
+   * until a day of cycles fits in the daily share of the monthly credits.
+   */
+  refreshInterval() {
+    const spendable = Math.max(1, this.client.dailyRequestLimit - this.callsPerDay - DAILY_RESERVE);
+    const needed = Math.ceil((86_400 * this.callsPerCycle) / spendable);
+    return Math.max(this.config.poll_frequency, needed);
+  }
+
+  /**
+   * Resolve the site to work on: the one configured by the user, or — with a
+   * Fleet API key and the field left empty — the single site it covers. An
+   * OAuth token cannot list sites, and Gladys does not relay the `site_id`
+   * SolarEdge appends to its redirect: the user types it.
    */
   async resolveSiteId() {
     if (this.siteId) {
@@ -107,6 +183,11 @@ export class SolarEdgeService {
       this.siteId = this.config.site_id;
       return this.siteId;
     }
+    if (this.client.mode === 'oauth') {
+      throw new SolarEdgeError('Fill in the "Site ID" setting.', {
+        code: ERROR_CODES.NOT_FOUND,
+      });
+    }
 
     const sites = await this.client.getSites();
     if (sites.length === 0) {
@@ -115,82 +196,93 @@ export class SolarEdgeService {
       });
     }
     if (sites.length > 1) {
-      const ids = sites.map((site) => site.id).join(', ');
+      const ids = sites.map((site) => site.siteId).join(', ');
       throw new SolarEdgeError(
         `This API key gives access to ${sites.length} sites (${ids}): fill in the "Site ID" setting.`,
         { code: ERROR_CODES.NOT_FOUND },
       );
     }
-    this.siteId = String(sites[0].id);
+    this.siteId = String(sites[0].siteId);
     logger.info(`Site auto-detected: ${sites[0].name} (${this.siteId})`);
     return this.siteId;
   }
 
-  /** Site details, fetched once (name, timezone, peak power, currency). */
+  /** Site details, fetched once (name, timezone, peak power). */
   async getSite() {
     if (this.site) {
       return this.site;
     }
     const siteId = await this.resolveSiteId();
-    this.site = (await this.client.getSiteDetails(siteId)) ?? {};
+    this.site = parseSiteDetails(await this.client.getSiteDetails(siteId));
     return this.site;
   }
 
-  /** Sites reachable with the configured API key (used by the manifest action). */
+  /** Sites reachable with the Fleet API key (the "List my sites" action). */
   async listSites() {
+    if (this.client.mode === 'oauth') {
+      // An authorization covers exactly one site: say which.
+      const site = await this.getSite();
+      return [{ siteId: site.id ?? this.siteId, name: site.name }];
+    }
     return this.client.getSites();
   }
 
   /**
-   * What this installation can actually feed. Derived from a real snapshot:
-   * a NUMBER in `currentPowerFlow` (LOAD/GRID power, a STORAGE node), or a
-   * real reading in `energyDetails` for sites whose flow endpoint stays empty.
-   *
-   * Presence alone proves nothing. A site with an inverter and no meter still
-   * answers `GRID: { status: 'Inactive' }` in the flow and lists the
-   * Consumption/FeedIn/Purchased meters in `energyDetails` with dates and no
-   * `value` (a real SE3000H, 2026-10-09): testing for the node created a
-   * "Grid" device stuck at 0 W. `parsePowerFlow` and `parseEnergyDetails`
-   * already turn those into `null`, so a `null` here means "not measured".
+   * The meters and batteries of the site. A failure (an OAuth app authorized
+   * without the DEVICE_DATA scope answers 403) falls back to "inverter only":
+   * production still works, and the next scan probes again.
+   */
+  async #getHardware({ force = false } = {}) {
+    if (this.hardware && !force) {
+      return this.hardware;
+    }
+    const siteId = await this.resolveSiteId();
+    try {
+      const hardware = parseDevices(await this.client.getDevices(siteId, ['METER', 'BATTERY']));
+      // Hardware does not leave between two probes of the same process.
+      const seen = this.hardware ?? { meters: 0, productionMeter: false, batteries: 0 };
+      this.hardware = {
+        meters: Math.max(seen.meters, hardware.meters),
+        productionMeter: seen.productionMeter || hardware.productionMeter,
+        batteries: Math.max(seen.batteries, hardware.batteries),
+      };
+      this.#recovered('devices');
+    } catch (err) {
+      if (err?.code === ERROR_CODES.RECONNECT || err?.code === ERROR_CODES.QUOTA_EXCEEDED) {
+        throw err;
+      }
+      this.#failed('devices', err);
+      this.hardware ??= { meters: 0, productionMeter: false, batteries: 0 };
+    }
+    return this.hardware;
+  }
+
+  /**
+   * What this installation can actually feed, derived from a real snapshot:
+   * a NUMBER for the home or grid power, a battery reading. Presence of a
+   * meter in the inventory alone proves nothing.
    */
   async getCapabilities({ force = false } = {}) {
     if (this.capabilities && !force) {
       return this.capabilities;
     }
+    await this.getSite();
+    await this.#getHardware({ force });
     const snapshot = await this.getSnapshot({ force: true });
-    const flow = snapshot.flow;
-    const energy = snapshot.energy;
-    const overview = snapshot.overview;
+    const { flow, energy } = snapshot;
 
-    // Hardware does not leave between two probes of the same process: a
-    // re-probe (a scan) that lands on a meter between two readings, with
-    // `energyDetails` failing too, must not take a device away.
     const seen = this.capabilities ?? {};
+    const grid = seen.grid || hasValue(flow?.grid);
     this.capabilities = {
       // A SolarEdge site always produces: the production device is the floor.
       production: true,
-      consumption: seen.consumption || hasValue(flow?.load) || hasMeter(energy, 'consumption'),
-      grid:
-        seen.grid ||
-        hasValue(flow?.grid) ||
-        hasMeter(energy, 'purchased') ||
-        hasMeter(energy, 'feedIn'),
+      consumption: seen.consumption || hasValue(flow?.load),
+      grid,
       battery: seen.battery || Boolean(flow?.battery),
-      // A cumulative grid import index needs the purchased energy of the day
-      // and the commissioning date to add up the days before it.
-      gridImport:
-        seen.gridImport || (hasMeter(energy, 'purchased') && installationDay(this.site) !== null),
-      // Revenue is not hardware: SolarEdge computes it as "feed-in tariff ×
-      // energy produced", and only when the owner has entered that tariff in
-      // the monitoring portal (Admin > Revenue). A feature that can never hold
-      // a value is worse than no feature — it reads as a broken sensor forever.
-      //
-      // Without a tariff the API still answers `lifeTimeData.revenue: 0.0` and
-      // no `lastDayData.revenue` at all (same real site): a lifetime 0 is the
-      // absence of a tariff, not a revenue. So: today's revenue when SolarEdge
-      // gives one (0 included — just after midnight on a site WITH a tariff),
-      // or a lifetime total that actually grew.
-      revenue: hasValue(overview?.revenueToday) || overview?.revenueLifetime > 0,
+      // The grid import index reads the meter's onboard import counter.
+      gridImport: seen.gridImport || (grid && hasValue(energy?.purchased)),
+      // V2 reports no revenue at all: the feature is gone with V1.
+      revenue: false,
     };
     logger.info(`Capabilities detected: ${JSON.stringify(this.capabilities)}`);
     return this.capabilities;
@@ -198,16 +290,16 @@ export class SolarEdgeService {
 
   /**
    * The shared snapshot. Returns the cached one while it is fresh enough for
-   * the current polling interval, and never runs two refreshes at once.
+   * the refresh interval, and never runs two refreshes at once.
    *
    * @param {{force?: boolean}} [options] `force: true` bypasses the freshness
    *   check (used by the capability probe and the "Refresh now" action)
    */
   async getSnapshot({ force = false } = {}) {
     const age = this.now().getTime() - this.snapshotAt;
-    // 80% of the polling interval: short enough that the next cycle really
-    // refreshes, long enough that the devices of one cycle share a single read.
-    const ttl = Math.max(30, this.config.poll_frequency * 0.8) * 1000;
+    // 80% of the interval: short enough that the next cycle really refreshes,
+    // long enough that the devices of one cycle share a single read.
+    const ttl = Math.max(30, this.refreshInterval() * 0.8) * 1000;
     if (this.snapshot && !force && age < ttl) {
       return this.snapshot;
     }
@@ -229,39 +321,70 @@ export class SolarEdgeService {
   async #refresh() {
     const siteId = await this.resolveSiteId();
     const site = await this.getSite();
+    const hardware = await this.#getHardware();
     const timeZone = site?.location?.timeZone;
     const now = this.now();
+    const window = {
+      from: isoInstant(new Date(now.getTime() - LIVE_WINDOW_MS)),
+      to: isoInstant(now),
+    };
 
-    // The two live endpoints, in parallel: one round-trip per cycle.
-    const [flowResult, overviewResult] = await Promise.allSettled([
-      this.client.getCurrentPowerFlow(siteId),
-      this.client.getOverview(siteId),
-    ]);
+    // Today's balance is the backbone of the cycle: without it there is no
+    // reading worth publishing, so its failure fails the cycle and the
+    // devices report themselves unreachable.
+    const energy = parseOverview(await this.client.getOverview(siteId));
+    this.#recovered('overview');
+    const day = siteDay(now, timeZone);
 
-    // A cycle that fails entirely must not silently serve stale values: it
-    // rejects, and the devices report themselves unreachable.
-    if (flowResult.status === 'rejected' && overviewResult.status === 'rejected') {
-      throw flowResult.reason;
+    const meters =
+      hardware.meters > 0
+        ? await this.#optional('meters/telemetry', () =>
+            this.client.getMetersTelemetry(siteId, window),
+          ).then((body) => (body ? parseMetersTelemetry(body) : null))
+        : null;
+    let pv = meters?.pv ?? null;
+    if (pv === null) {
+      const body = await this.#optional('power', () => this.client.getPower(siteId, window));
+      // A sleeping inverter (night) sends nothing: its buckets come back
+      // `null`. No data from the inverter means no production — and a power
+      // stuck on the last daylight value all night would be worse.
+      pv = body ? (parsePower(body) ?? 0) : (this.snapshot?.flow?.pv ?? null);
     }
 
-    const flow =
-      flowResult.status === 'fulfilled'
-        ? parsePowerFlow(flowResult.value)
-        : (this.#failed('currentPowerFlow', flowResult.reason), this.snapshot?.flow ?? null);
-    const overview =
-      overviewResult.status === 'fulfilled'
-        ? parseOverview(overviewResult.value)
-        : (this.#failed('overview', overviewResult.reason), this.snapshot?.overview ?? null);
-    if (flowResult.status === 'fulfilled') {
-      this.#recovered('currentPowerFlow');
-    }
-    if (overviewResult.status === 'fulfilled') {
-      this.#recovered('overview');
+    let battery = null;
+    let storage = null;
+    if (hardware.batteries > 0) {
+      const body = await this.#optional('storage/telemetry', () =>
+        this.client.getStorageTelemetry(siteId, window),
+      );
+      battery = body ? parseStorageTelemetry(body) : (this.snapshot?.flow?.battery ?? null);
+      let temperature = null;
+      if (this.config.storage_details && battery) {
+        const status = await this.#optional('storage/status', () =>
+          this.client.getStorageStatus(siteId, window),
+        );
+        temperature = status
+          ? parseStorageStatus(status)
+          : (this.snapshot?.storage?.temperature ?? null);
+      }
+      if (battery) {
+        storage = { level: battery.level, energyStored: battery.energyStored, temperature };
+      }
     }
 
-    const energy = await this.#refreshEnergyDetails(siteId, timeZone, now);
-    const storage = await this.#refreshStorageData(siteId, timeZone, now, flow);
-    const gridImportIndex = await this.#gridImportIndex(siteId, site, energy);
+    const flow = {
+      pv,
+      load: meters?.load ?? (hardware.meters > 0 ? (this.snapshot?.flow?.load ?? null) : null),
+      grid: meters?.grid ?? (hardware.meters > 0 ? (this.snapshot?.flow?.grid ?? null) : null),
+      battery,
+    };
+
+    await this.#refreshDaily(siteId, day, now, energy);
+    // A base from another day would add yesterday's base to today's figures:
+    // after midnight, until the new reads land, those totals are unknown.
+    const daily = this.daily?.day === day ? this.daily : null;
+    const overview = this.#overview(energy, daily);
+    const gridImportIndex = await this.#gridImportIndex(energy, daily);
 
     this.snapshot = {
       flow,
@@ -276,142 +399,154 @@ export class SolarEdgeService {
     return this.snapshot;
   }
 
-  /**
-   * Daily energy breakdown, on its own slower cadence: consumption,
-   * self-consumption, import and export barely move between two live reads,
-   * and each refresh costs one request out of the daily budget.
-   */
-  async #refreshEnergyDetails(siteId, timeZone, now) {
-    const due = now.getTime() - this.energyAt >= this.config.energy_details_frequency * 1000;
-    if (!due && this.snapshot?.energy) {
-      return this.snapshot.energy;
-    }
+  /** A secondary read: its failure keeps the cycle (and is logged once). */
+  async #optional(endpoint, call) {
     try {
-      const { startTime, endTime } = siteDayRange(now, timeZone);
-      const details = await this.client.getEnergyDetails(siteId, {
-        startTime,
-        endTime,
-        timeUnit: 'DAY',
-        meters: ENERGY_METERS,
-      });
-      this.energyAt = now.getTime();
-      this.energyDay = siteDay(now, timeZone);
-      this.#recovered('energyDetails');
-      return parseEnergyDetails(details);
+      const body = await call();
+      this.#recovered(endpoint);
+      return body;
     } catch (err) {
-      this.#failed('energyDetails', err);
-      // Keep the previous breakdown: a missed refresh is better than a hole.
-      return this.snapshot?.energy ?? null;
+      if (err?.code === ERROR_CODES.RECONNECT) {
+        throw err;
+      }
+      this.#failed(endpoint, err);
+      return null;
     }
   }
 
   /**
-   * The grid import INDEX: every kWh bought from the grid since the site was
-   * commissioned, in kWh, never going down — or `null` when it cannot be
-   * built (no purchased reading, no commissioning date, a failed request).
+   * The once-a-day reads, stored as BASES: the value minus today's figure read
+   * in the same cycle. `base + today` then follows the day for free:
    *
-   * Why: the Gladys energy module (30-minute consumption, cost, energy
-   * dashboard) only reads a cumulative consumption index. What a metered
-   * SolarEdge site pays its supplier is the energy PURCHASED from the grid —
-   * not the house consumption, which includes the free self-consumed solar.
-   * SolarEdge has no lifetime purchased counter, so it is rebuilt:
+   *     month    = (month production at the read - today at the read) + today
+   *     lifetime = (lifetime counter at the read  - today at the read) + today
+   *     import   = (import counter at the read    - imported today)   + imported today
    *
-   *     index = purchased up to the end of yesterday   (once a day)
-   *           + purchased today                        (the daily breakdown)
-   *
-   * Both halves are tied to the SAME site day (`energyDay`, the day of the
-   * cached breakdown): just after midnight the breakdown still holds
-   * yesterday's total, and adding it to a base that already includes
-   * yesterday would count the day twice — a spike billed as consumption.
+   * Tied to the site day of the overview: the overview restarts at the
+   * site's midnight, and so do the bases.
    */
-  async #gridImportIndex(siteId, site, energy) {
-    const purchasedToday = energy?.purchased;
-    const day = this.energyDay;
-    const installed = installationDay(site);
-    if (!hasValue(purchasedToday) || !day || !installed || this.importFailedDay === day) {
-      return null;
+  async #refreshDaily(siteId, day, now, energy) {
+    if (now.getTime() - this.dailyFailedAt < DAILY_RETRY_MS || this.dailyRefusedDay === day) {
+      return;
     }
-    let base;
     try {
-      base = await this.#importBase(siteId, installed, day);
+      if (this.daily?.day !== day) {
+        const today = energy?.production;
+        if (!hasValue(today)) {
+          return;
+        }
+        // From a day before January 1 (UTC), so the site's local January is
+        // covered whatever its offset; parseMonthlyEnergy keeps this year only.
+        const monthly = parseMonthlyEnergy(
+          await this.client.getEnergy(siteId, {
+            from: `${addDays(`${day.slice(0, 4)}-01-01`, -1)}T00:00:00Z`,
+            to: isoInstant(now),
+            resolution: 'MONTH',
+          }),
+          day,
+        );
+        const lifetime = parseLifetimeEnergy(await this.client.getLifetimeEnergy(siteId));
+        this.daily = {
+          day,
+          month: baseOf(monthly.month, today),
+          year: baseOf(monthly.year, today),
+          lifetime: baseOf(lifetime, today),
+          import: null,
+          importRead: false,
+        };
+      }
+      // Read on its own: the capability is only known after the first cycle
+      // of the detection, which already took the other daily totals.
+      if (this.capabilities?.gridImport && !this.daily.importRead && hasValue(energy?.purchased)) {
+        const counter = parseImportCounter(
+          await this.client.getMetersLifetimeEnergy(siteId, {
+            from: isoInstant(new Date(now.getTime() - LIVE_WINDOW_MS)),
+            to: isoInstant(now),
+            meters: ['PURCHASED'],
+          }),
+        );
+        this.daily.import = baseOf(counter, energy.purchased);
+        this.daily.importRead = true;
+      }
+      this.dailyFailedAt = 0;
+      this.#recovered('daily totals');
     } catch (err) {
-      // Not retried before tomorrow: a history SolarEdge keeps refusing would
-      // otherwise spend requests at every refresh, up to the whole budget.
-      this.importFailedDay = day;
-      this.#failed('energyDetails (grid import index)', err);
+      if (err?.code === ERROR_CODES.RECONNECT) {
+        throw err;
+      }
+      this.dailyFailedAt = now.getTime();
+      if (REFUSED.has(err?.status) || err?.code === ERROR_CODES.TIER) {
+        this.dailyRefusedDay = day;
+      }
+      this.#failed('daily totals', err);
+    }
+  }
+
+  /** The production totals the devices and the widgets read. */
+  #overview(energy, daily) {
+    const today = energy?.production ?? null;
+    const plus = (base) => (hasValue(base) && hasValue(today) ? round(base + today, 2) : null);
+    const lifetime = plus(daily?.lifetime);
+    if (lifetime !== null) {
+      // An index never goes backwards: a counter read a little late in the
+      // morning must not read as a reset.
+      this.lifetimeIndex = Math.max(this.lifetimeIndex ?? 0, lifetime);
+    }
+    return {
+      currentPower: null,
+      energyToday: today,
+      energyMonth: plus(daily?.month),
+      energyYear: plus(daily?.year),
+      energyLifetime: this.lifetimeIndex,
+      revenueToday: null,
+      revenueLifetime: null,
+    };
+  }
+
+  /**
+   * The grid import INDEX: every kWh the meter counted from the grid, never
+   * going down — or `null` without a meter reading.
+   *
+   * Why: the Gladys energy module (30-minute consumption, cost) only reads a
+   * cumulative consumption index, and what a metered site pays its supplier is
+   * the energy PURCHASED from the grid — not the house consumption, which
+   * includes the free self-consumed solar.
+   */
+  async #gridImportIndex(energy, daily) {
+    const base = daily?.import;
+    if (!hasValue(base) || !hasValue(energy?.purchased)) {
       return null;
     }
-    this.#recovered('energyDetails (grid import index)');
-    // Never backwards: a day SolarEdge revises down by a few Wh must not read
-    // as a meter reset (the core skips negative deltas, then counts the jump
-    // back up as consumption).
-    this.importIndex = Math.max(this.importIndex ?? 0, round(base + purchasedToday, 2));
+    const raw = round(base + energy.purchased, 2);
+    if (this.importOffset === null) {
+      // Versions 1.x published this same feature as a sum of the daily
+      // imports since commissioning; V2 reads the meter's own counter, which
+      // differs. Jumping from one to the other would bill the gap as one
+      // half-hour of consumption: the first V2 value is anchored on the last
+      // value Gladys holds, once, and the offset is kept for good.
+      this.importOffset = hasValue(this.importSeed) ? round(this.importSeed - raw, 2) : 0;
+      try {
+        await this.onImportOffset(this.importOffset);
+      } catch (err) {
+        logger.error(`Could not save the import index offset: ${err.message}`);
+      }
+    }
+    this.importIndex = Math.max(this.importIndex ?? 0, round(raw + this.importOffset, 2));
     return this.importIndex;
   }
 
-  /** Purchased energy from commissioning to the end of the day before `day`. */
-  async #importBase(siteId, installed, day) {
-    if (this.importBase?.day === day) {
-      return this.importBase.kwh;
-    }
-    const year = Number(day.slice(0, 4));
-    const yearStart = `${year}-01-01`;
-    const yesterday = addDays(day, -1);
-
-    let kwh = 0;
-    if (installed < yearStart) {
-      kwh += await this.#importPastYears(siteId, installed, year);
-    }
-    // This year, day by day: one bucket per day, nothing ambiguous.
-    const from = installed > yearStart ? installed : yearStart;
-    if (from <= yesterday) {
-      kwh += await this.#purchased(siteId, from, yesterday, 'DAY');
-    }
-    this.importBase = { day, kwh };
-    return kwh;
-  }
-
   /**
-   * Purchased energy of the full years before `year`, cached for the year.
-   * One YEAR-bucket request; if SolarEdge refuses the period (the API caps
-   * some time units to a period, answering 400/403), one DAY request per year.
+   * The last import index Gladys holds (the feature's `last_value`): the
+   * anchor of the first V2 value, and a floor after a restart — the counter
+   * read lags the overview by up to 15 minutes, and an index that goes down
+   * reads as a meter reset.
    */
-  async #importPastYears(siteId, installed, year) {
-    if (this.importPastYears?.year === year) {
-      return this.importPastYears.kwh;
+  seedImportIndex(value) {
+    if (!hasValue(value)) {
+      return;
     }
-    const lastDay = `${year - 1}-12-31`;
-    let kwh;
-    try {
-      kwh = await this.#purchased(siteId, installed, lastDay, 'YEAR');
-    } catch (err) {
-      if (err?.status !== 400 && err?.status !== 403) {
-        throw err;
-      }
-      logger.info(
-        `energyDetails refused a multi-year period (${err.message}): one request per year`,
-      );
-      kwh = 0;
-      for (let y = Number(installed.slice(0, 4)); y < year; y += 1) {
-        const start = y === Number(installed.slice(0, 4)) ? installed : `${y}-01-01`;
-        kwh += await this.#purchased(siteId, start, `${y}-12-31`, 'DAY');
-      }
-    }
-    this.importPastYears = { year, kwh };
-    return kwh;
-  }
-
-  /** Purchased kWh over whole site days, 0 when the meter reported nothing. */
-  async #purchased(siteId, fromDay, toDay, timeUnit) {
-    const details = await this.client.getEnergyDetails(siteId, {
-      startTime: `${fromDay} 00:00:00`,
-      endTime: `${toDay} 23:59:59`,
-      timeUnit,
-      meters: ['PURCHASED'],
-    });
-    // A year before the meter was fitted has no value: nothing was measured,
-    // and nothing is owed to the index either.
-    return parseEnergyDetails(details)?.purchased ?? 0;
+    this.importSeed = value;
+    this.importIndex = Math.max(this.importIndex ?? 0, value);
   }
 
   /** A partial failure: logged once until the endpoint answers again. */
@@ -431,32 +566,11 @@ export class SolarEdgeService {
       logger.info(`SolarEdge ${endpoint} answers again`);
     }
   }
-
-  /** Optional battery telemetry (stored energy, temperature). */
-  async #refreshStorageData(siteId, timeZone, now, flow) {
-    if (!this.config.storage_details || !flow?.battery) {
-      return null;
-    }
-    const due = now.getTime() - this.storageAt >= this.config.energy_details_frequency * 1000;
-    if (!due && this.snapshot?.storage) {
-      return this.snapshot.storage;
-    }
-    try {
-      const { startTime, endTime } = siteRecentRange(now, timeZone, 60);
-      const storageData = await this.client.getStorageData(siteId, { startTime, endTime });
-      this.storageAt = now.getTime();
-      this.#recovered('storageData');
-      return parseStorageData(storageData);
-    } catch (err) {
-      this.#failed('storageData', err);
-      return this.snapshot?.storage ?? null;
-    }
-  }
 }
 
-/** True when `energyDetails` returned a real reading for that meter. */
-function hasMeter(energy, key) {
-  return Boolean(energy) && energy[key] !== null && energy[key] !== undefined;
+/** `value - today`, or `null` when either is missing. */
+function baseOf(value, today) {
+  return hasValue(value) && hasValue(today) ? round(value - today, 2) : null;
 }
 
 /** A real number, as opposed to "SolarEdge did not report this". 0 counts. */

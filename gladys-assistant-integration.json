@@ -10,7 +10,7 @@
   },
   "version": "1.4.2",
   "docker_image": "ghcr.io/guim31/gladys-solaredge:1.4.2",
-  "gladys_version": ">=5.1.0",
+  "gladys_version": ">=5.2.0",
   "categories": ["energy"],
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-solaredge/main/cover.jpg",
   "transports": ["cloud"],
@@ -25,45 +25,66 @@
         "es": "Primeros pasos"
       },
       "description": {
-        "en": "This integration reads your installation through the SolarEdge Monitoring API. Generate an API key from the monitoring portal (Admin > Site Access > API Access), paste it below, then press \"Test the connection\". SolarEdge allows 300 requests per day and per site: the default refresh interval stays well within that budget.",
-        "fr": "Cette intégration lit votre installation via l'API SolarEdge Monitoring. Générez une clé d'API depuis le portail de supervision (Admin > Accès au site > Accès API), collez-la ci-dessous puis appuyez sur « Tester la connexion ». SolarEdge autorise 300 requêtes par jour et par site : l'intervalle de rafraîchissement par défaut reste largement dans ce budget.",
-        "de": "Diese Integration liest deine Anlage über die SolarEdge Monitoring API aus. Erzeuge im Monitoring-Portal einen API-Schlüssel (Admin > Site Access > API Access), füge ihn unten ein und klicke dann auf „Verbindung testen“. SolarEdge erlaubt 300 Anfragen pro Tag und Standort: Das voreingestellte Aktualisierungsintervall bleibt deutlich darunter.",
-        "es": "Esta integración lee su instalación a través de la API SolarEdge Monitoring. Genere una clave de API en el portal de monitorización (Admin > Site Access > API Access), péguela abajo y pulse «Probar conexión». SolarEdge permite 300 solicitudes al día por sitio: el intervalo de actualización predeterminado queda muy por debajo de ese límite."
+        "en": "SolarEdge retired its V1 API (and its API keys) on 3 November 2026. To read your installation: 1. sign in at developer.solaredge.com with your mySolarEdge login and create the free developer account; 2. create an application, service Monitoring API, access \"Site Access\", scopes SITE_DATA and DEVICE_DATA, and declare the redirect URI shown under the \"Connect\" button below; 3. paste its Client ID and Client Secret, and your site ID (mySolarEdge app, site details), then save; 4. press \"Connect\" and approve with your mySolarEdge login. The Free plan gives 2,000 requests a month: the refresh interval adapts to it.",
+        "fr": "SolarEdge a arrêté son API V1 (et ses clés d'API) le 3 novembre 2026. Pour lire votre installation : 1. connectez-vous sur developer.solaredge.com avec vos identifiants mySolarEdge et créez le compte développeur gratuit ; 2. créez une application, service Monitoring API, accès « Site Access », portées SITE_DATA et DEVICE_DATA, et déclarez l'adresse de redirection affichée sous le bouton « Connecter » ci-dessous ; 3. collez son Client ID et son Client Secret, ainsi que l'identifiant de votre site (application mySolarEdge, détails du site), puis enregistrez ; 4. appuyez sur « Connecter » et autorisez avec vos identifiants mySolarEdge. L'offre gratuite donne 2 000 requêtes par mois : l'intervalle de rafraîchissement s'y adapte.",
+        "de": "SolarEdge hat seine V1-API (und deren API-Schlüssel) am 3. November 2026 abgeschaltet. So liest du deine Anlage aus: 1. Melde dich auf developer.solaredge.com mit deinen mySolarEdge-Zugangsdaten an und lege das kostenlose Entwicklerkonto an; 2. erstelle eine Anwendung, Dienst Monitoring API, Zugriff „Site Access“, Bereiche SITE_DATA und DEVICE_DATA, und trage die unter der Schaltfläche „Verbinden“ angezeigte Weiterleitungsadresse ein; 3. füge Client ID und Client Secret sowie deine Standort-ID (mySolarEdge-App, Standortdetails) ein und speichere; 4. klicke auf „Verbinden“ und bestätige mit deinen mySolarEdge-Zugangsdaten. Der kostenlose Tarif bietet 2.000 Anfragen pro Monat: Das Aktualisierungsintervall passt sich daran an.",
+        "es": "SolarEdge retiró su API V1 (y sus claves de API) el 3 de noviembre de 2026. Para leer su instalación: 1. inicie sesión en developer.solaredge.com con sus credenciales de mySolarEdge y cree la cuenta de desarrollador gratuita; 2. cree una aplicación, servicio Monitoring API, acceso «Site Access», ámbitos SITE_DATA y DEVICE_DATA, y declare la dirección de redirección que aparece bajo el botón «Conectar»; 3. pegue su Client ID y su Client Secret, y el ID de su sitio (aplicación mySolarEdge, detalles del sitio), y guarde; 4. pulse «Conectar» y autorice con sus credenciales de mySolarEdge. El plan gratuito ofrece 2000 solicitudes al mes: el intervalo de actualización se adapta a ello."
       },
       "links": [
         {
-          "url": "https://monitoring.solaredge.com/",
+          "url": "https://developer.solaredge.com/",
           "label": {
-            "en": "SolarEdge monitoring portal",
-            "fr": "Portail SolarEdge Monitoring",
-            "de": "SolarEdge-Monitoring-Portal",
-            "es": "Portal SolarEdge Monitoring"
+            "en": "SolarEdge developer console",
+            "fr": "Console développeur SolarEdge",
+            "de": "SolarEdge-Entwicklerkonsole",
+            "es": "Consola de desarrollador de SolarEdge"
+          }
+        },
+        {
+          "url": "https://api-docs.solaredge.com/docs/developer-platform/df8kx5j4z9vi0-homeowner-and-self-access-guide",
+          "label": {
+            "en": "SolarEdge guide for homeowners",
+            "fr": "Guide SolarEdge pour les particuliers",
+            "de": "SolarEdge-Leitfaden für Privatpersonen",
+            "es": "Guía de SolarEdge para particulares"
           }
         }
       ]
     },
     {
-      "key": "api_key",
-      "type": "secret",
+      "key": "client_id",
+      "type": "string",
       "label": {
-        "en": "API key",
-        "fr": "Clé d'API",
-        "de": "API-Schlüssel",
-        "es": "Clave de API"
+        "en": "Client ID",
+        "fr": "Client ID",
+        "de": "Client ID",
+        "es": "Client ID"
       },
       "description": {
-        "en": "SolarEdge Monitoring API key, generated in Admin > Site Access > API Access.",
-        "fr": "Clé d'API SolarEdge Monitoring, générée dans Admin > Accès au site > Accès API.",
-        "de": "API-Schlüssel von SolarEdge Monitoring, erzeugt unter Admin > Site Access > API Access.",
-        "es": "Clave de la API SolarEdge Monitoring, generada en Admin > Site Access > API Access."
+        "en": "Client ID of your \"Site Access\" application, in the SolarEdge developer console.",
+        "fr": "Client ID de votre application « Site Access », dans la console développeur SolarEdge.",
+        "de": "Client ID deiner „Site Access“-Anwendung in der SolarEdge-Entwicklerkonsole.",
+        "es": "Client ID de su aplicación «Site Access», en la consola de desarrollador de SolarEdge."
       },
-      "required": true,
-      "placeholder": {
-        "en": "32 uppercase characters",
-        "fr": "32 caractères en majuscules",
-        "de": "32 Zeichen in Großbuchstaben",
-        "es": "32 caracteres en mayúsculas"
-      }
+      "required": false,
+      "default": ""
+    },
+    {
+      "key": "client_secret",
+      "type": "secret",
+      "label": {
+        "en": "Client Secret",
+        "fr": "Client Secret",
+        "de": "Client Secret",
+        "es": "Client Secret"
+      },
+      "description": {
+        "en": "Shown only once, when the application is created.",
+        "fr": "Affiché une seule fois, à la création de l'application.",
+        "de": "Wird nur einmal angezeigt, beim Anlegen der Anwendung.",
+        "es": "Solo se muestra una vez, al crear la aplicación."
+      },
+      "required": false
     },
     {
       "key": "site_id",
@@ -75,10 +96,10 @@
         "es": "ID del sitio"
       },
       "description": {
-        "en": "Numeric site id. Leave empty when the API key covers a single site: it is detected automatically. Use the \"List my sites\" button otherwise.",
-        "fr": "Identifiant numérique du site. Laissez vide si la clé ne couvre qu'un seul site : il est détecté automatiquement. Utilisez sinon le bouton « Lister mes sites ».",
-        "de": "Numerische Standort-ID. Leer lassen, wenn der API-Schlüssel nur einen Standort umfasst: Er wird automatisch erkannt. Andernfalls die Schaltfläche „Meine Standorte auflisten“ verwenden.",
-        "es": "ID numérico del sitio. Déjelo vacío si la clave de API solo da acceso a un sitio: se detecta automáticamente. Si no, use el botón «Listar mis sitios»."
+        "en": "Numeric id of your site (mySolarEdge app, site details; or the address bar of the monitoring portal). Required with \"Connect\"; can stay empty with a Fleet API key covering a single site.",
+        "fr": "Identifiant numérique de votre site (application mySolarEdge, détails du site ; ou barre d'adresse du portail de supervision). Obligatoire avec « Connecter » ; peut rester vide avec une clé Fleet qui ne couvre qu'un site.",
+        "de": "Numerische ID deines Standorts (mySolarEdge-App, Standortdetails; oder Adressleiste des Monitoring-Portals). Pflicht mit „Verbinden“; mit einem Fleet-API-Schlüssel für nur einen Standort kann es leer bleiben.",
+        "es": "ID numérico de su sitio (aplicación mySolarEdge, detalles del sitio; o barra de direcciones del portal de monitorización). Obligatorio con «Conectar»; puede quedar vacío con una clave Fleet que solo cubre un sitio."
       },
       "required": false,
       "default": "",
@@ -90,6 +111,39 @@
       }
     },
     {
+      "key": "solaredge_account",
+      "type": "oauth2",
+      "label": {
+        "en": "SolarEdge access",
+        "fr": "Accès SolarEdge",
+        "de": "SolarEdge-Zugriff",
+        "es": "Acceso a SolarEdge"
+      },
+      "description": {
+        "en": "Save the fields above first, then connect with your mySolarEdge login (the site owner's). To be redone only if access expires (14 days without any refresh).",
+        "fr": "Enregistrez d'abord les champs ci-dessus, puis connectez-vous avec vos identifiants mySolarEdge (ceux du propriétaire du site). À refaire seulement si l'accès expire (14 jours sans aucun rafraîchissement).",
+        "de": "Speichere zuerst die Felder oben und verbinde dich dann mit deinen mySolarEdge-Zugangsdaten (denen des Standortbesitzers). Nur erneut nötig, wenn der Zugriff abläuft (14 Tage ohne Aktualisierung).",
+        "es": "Guarde primero los campos de arriba y conéctese con sus credenciales de mySolarEdge (las del propietario del sitio). Solo hay que repetirlo si el acceso caduca (14 días sin ninguna actualización)."
+      }
+    },
+    {
+      "key": "api_key",
+      "type": "secret",
+      "label": {
+        "en": "Fleet API key (installers)",
+        "fr": "Clé d'API Fleet (installateurs)",
+        "de": "Fleet-API-Schlüssel (Installateure)",
+        "es": "Clave de API Fleet (instaladores)"
+      },
+      "description": {
+        "en": "Only for an installer account with a \"Fleet Access\" application, instead of \"Connect\". Old V1 API keys no longer work.",
+        "fr": "Seulement pour un compte installateur avec une application « Fleet Access », à la place de « Connecter ». Les anciennes clés d'API V1 ne fonctionnent plus.",
+        "de": "Nur für ein Installateurkonto mit einer „Fleet Access“-Anwendung, anstelle von „Verbinden“. Alte V1-API-Schlüssel funktionieren nicht mehr.",
+        "es": "Solo para una cuenta de instalador con una aplicación «Fleet Access», en lugar de «Conectar». Las antiguas claves de API V1 ya no funcionan."
+      },
+      "required": false
+    },
+    {
       "key": "poll_frequency",
       "type": "number",
       "label": {
@@ -99,35 +153,35 @@
         "es": "Intervalo de actualización (s)"
       },
       "description": {
-        "en": "How often the live values (power flow, production totals) are refreshed. Each cycle costs 2 SolarEdge requests out of the 300 allowed per day, whatever the number of devices.",
-        "fr": "Fréquence de rafraîchissement des valeurs instantanées (flux de puissance, compteurs de production). Chaque cycle coûte 2 requêtes SolarEdge sur les 300 autorisées par jour, quel que soit le nombre d'appareils.",
-        "de": "Wie oft die Live-Werte (Leistungsfluss, Produktionszähler) aktualisiert werden. Jeder Zyklus kostet 2 der 300 täglich erlaubten SolarEdge-Anfragen, unabhängig von der Anzahl der Geräte.",
-        "es": "Frecuencia de actualización de los valores en directo (flujo de potencia, contadores de producción). Cada ciclo consume 2 de las 300 solicitudes diarias que permite SolarEdge, sea cual sea el número de dispositivos."
+        "en": "Wished interval between two readings. Stretched automatically to fit the monthly credits: about every 50 min for a lone inverter on the Free plan, more with a meter or a battery (see \"API usage\").",
+        "fr": "Intervalle souhaité entre deux lectures. Allongé automatiquement pour tenir dans les crédits mensuels : environ toutes les 50 min pour un onduleur seul avec l'offre gratuite, davantage avec un compteur ou une batterie (voir « Consommation de l'API »).",
+        "de": "Gewünschter Abstand zwischen zwei Abfragen. Wird automatisch verlängert, damit die monatlichen Credits reichen: etwa alle 50 Min. für einen einzelnen Wechselrichter im kostenlosen Tarif, mehr mit Zähler oder Batterie (siehe „API-Nutzung“).",
+        "es": "Intervalo deseado entre dos lecturas. Se alarga automáticamente para no superar los créditos mensuales: unos 50 min para un inversor solo con el plan gratuito, más con un contador o una batería (vea «Uso de la API»)."
       },
       "required": false,
       "default": 900,
-      "min": 300,
-      "max": 3600
+      "min": 900,
+      "max": 7200
     },
     {
-      "key": "energy_details_frequency",
+      "key": "monthly_credits",
       "type": "number",
       "label": {
-        "en": "Daily breakdown interval (s)",
-        "fr": "Intervalle du bilan quotidien (s)",
-        "de": "Intervall der Tagesbilanz (s)",
-        "es": "Intervalo del balance diario (s)"
+        "en": "Monthly credits",
+        "fr": "Crédits mensuels",
+        "de": "Monatliche Credits",
+        "es": "Créditos mensuales"
       },
       "description": {
-        "en": "How often the daily breakdown (consumption, self-consumption, imported, exported) is refreshed. Slower than the live values on purpose: it costs one more request per refresh.",
-        "fr": "Fréquence de rafraîchissement du bilan du jour (consommation, autoconsommation, énergie soutirée et injectée). Volontairement plus lent que les valeurs instantanées : il coûte une requête supplémentaire à chaque fois.",
-        "de": "Wie oft die Tagesbilanz (Verbrauch, Eigenverbrauch, Netzbezug, Einspeisung) aktualisiert wird. Bewusst langsamer als die Live-Werte: Jede Aktualisierung kostet eine zusätzliche Anfrage.",
-        "es": "Frecuencia de actualización del balance del día (consumo, autoconsumo, energía importada y exportada). Más lenta que los valores en directo a propósito: cada actualización consume una solicitud más."
+        "en": "Monthly allowance of your SolarEdge developer account (2,000 on the Free plan, 20,000 on Business Starter). The integration spends at most 1/31 of it a day. Lower it if other applications share the account.",
+        "fr": "Allocation mensuelle de votre compte développeur SolarEdge (2 000 avec l'offre gratuite, 20 000 avec Business Starter). L'intégration en dépense au plus 1/31 par jour. Baissez-la si d'autres applications partagent le compte.",
+        "de": "Monatliches Kontingent deines SolarEdge-Entwicklerkontos (2.000 im kostenlosen Tarif, 20.000 mit Business Starter). Die Integration verbraucht höchstens 1/31 davon pro Tag. Senke den Wert, wenn sich andere Anwendungen das Konto teilen.",
+        "es": "Asignación mensual de su cuenta de desarrollador de SolarEdge (2000 con el plan gratuito, 20 000 con Business Starter). La integración gasta como máximo 1/31 al día. Redúzcala si otras aplicaciones comparten la cuenta."
       },
       "required": false,
-      "default": 1800,
-      "min": 900,
-      "max": 21600
+      "default": 2000,
+      "min": 500,
+      "max": 1000000
     },
     {
       "key": "storage_details",
@@ -139,80 +193,13 @@
         "es": "Telemetría detallada de la batería"
       },
       "description": {
-        "en": "Add the stored energy and the battery temperature, read from the storage endpoint. Costs one more request per daily-breakdown cycle, and only applies to sites with a battery.",
-        "fr": "Ajoute l'énergie stockée et la température de la batterie, lues sur l'endpoint de stockage. Coûte une requête supplémentaire par cycle de bilan quotidien, et ne concerne que les sites équipés d'une batterie.",
-        "de": "Fügt die gespeicherte Energie und die Batterietemperatur hinzu, gelesen vom Speicher-Endpunkt. Kostet eine zusätzliche Anfrage pro Tagesbilanz-Zyklus und gilt nur für Standorte mit Batterie.",
-        "es": "Añade la energía almacenada y la temperatura de la batería, leídas en el endpoint de almacenamiento. Consume una solicitud más por ciclo de balance diario y solo afecta a los sitios con batería."
+        "en": "Add the battery temperature. Costs one more request per refresh (so a longer interval), and only applies to sites with a battery.",
+        "fr": "Ajoute la température de la batterie. Coûte une requête de plus par rafraîchissement (donc un intervalle plus long), et ne concerne que les sites équipés d'une batterie.",
+        "de": "Fügt die Batterietemperatur hinzu. Kostet eine Anfrage mehr pro Aktualisierung (also ein längeres Intervall) und gilt nur für Standorte mit Batterie.",
+        "es": "Añade la temperatura de la batería. Consume una solicitud más por actualización (por tanto, un intervalo más largo) y solo afecta a los sitios con batería."
       },
       "required": false,
       "default": false
-    },
-    {
-      "key": "daily_request_limit",
-      "type": "number",
-      "label": {
-        "en": "Daily request budget",
-        "fr": "Budget de requêtes quotidien",
-        "de": "Tägliches Anfragebudget",
-        "es": "Presupuesto diario de solicitudes"
-      },
-      "description": {
-        "en": "The integration stops calling SolarEdge once this many requests have been made today, so the API key never gets throttled. SolarEdge's own limit is 300 per day and per site.",
-        "fr": "L'intégration cesse d'appeler SolarEdge une fois ce nombre de requêtes atteint dans la journée, pour que la clé d'API ne soit jamais bloquée. La limite SolarEdge est de 300 par jour et par site.",
-        "de": "Die Integration stellt die Anfragen an SolarEdge ein, sobald heute so viele Anfragen gestellt wurden, damit der API-Schlüssel nie gesperrt wird. Das Limit von SolarEdge selbst liegt bei 300 pro Tag und Standort.",
-        "es": "La integración deja de llamar a SolarEdge cuando alcanza este número de solicitudes en el día, para que la clave de API nunca quede bloqueada. El límite de SolarEdge es de 300 al día por sitio."
-      },
-      "required": false,
-      "default": 300,
-      "min": 50,
-      "max": 10000
-    },
-    {
-      "key": "currency",
-      "type": "select",
-      "label": {
-        "en": "Revenue currency",
-        "fr": "Devise des revenus",
-        "de": "Währung der Erträge",
-        "es": "Moneda de los ingresos"
-      },
-      "description": {
-        "en": "Currency of the daily revenue reported by SolarEdge, as configured on your site.",
-        "fr": "Devise du revenu quotidien remonté par SolarEdge, telle que configurée sur votre site.",
-        "de": "Währung des von SolarEdge gemeldeten Tagesertrags, wie für deinen Standort eingestellt.",
-        "es": "Moneda de los ingresos diarios que comunica SolarEdge, tal como está configurada en su sitio."
-      },
-      "required": false,
-      "default": "euro",
-      "options": [
-        {
-          "value": "euro",
-          "label": {
-            "en": "Euro",
-            "fr": "Euro",
-            "de": "Euro",
-            "es": "Euro"
-          }
-        },
-        {
-          "value": "dollar",
-          "label": {
-            "en": "Dollar",
-            "fr": "Dollar",
-            "de": "Dollar",
-            "es": "Dólar"
-          }
-        },
-        {
-          "value": "pound-sterling",
-          "label": {
-            "en": "Pound sterling",
-            "fr": "Livre sterling",
-            "de": "Pfund Sterling",
-            "es": "Libra esterlina"
-          }
-        }
-      ]
     }
   ],
   "actions": [
@@ -225,10 +212,10 @@
         "es": "Probar conexión"
       },
       "description": {
-        "en": "Check the API key, resolve the site and list what this installation can report.",
-        "fr": "Vérifie la clé d'API, résout le site et liste ce que l'installation sait remonter.",
-        "de": "Prüft den API-Schlüssel, ermittelt den Standort und listet auf, was diese Anlage melden kann.",
-        "es": "Comprueba la clave de API, identifica el sitio y enumera lo que puede comunicar esta instalación."
+        "en": "Check the SolarEdge access, resolve the site and list what this installation can report.",
+        "fr": "Vérifie l'accès SolarEdge, résout le site et liste ce que l'installation sait remonter.",
+        "de": "Prüft den SolarEdge-Zugriff, ermittelt den Standort und listet auf, was diese Anlage melden kann.",
+        "es": "Comprueba el acceso a SolarEdge, identifica el sitio y enumera lo que puede comunicar esta instalación."
       },
       "timeout_seconds": 30
     },
@@ -241,10 +228,10 @@
         "es": "Listar mis sitios"
       },
       "description": {
-        "en": "Show every site the API key gives access to, with its id.",
-        "fr": "Affiche tous les sites auxquels la clé d'API donne accès, avec leur identifiant.",
-        "de": "Zeigt alle Standorte, auf die der API-Schlüssel Zugriff gibt, mit ihrer ID.",
-        "es": "Muestra todos los sitios a los que da acceso la clave de API, con su ID."
+        "en": "With a Fleet API key: every site it covers, with its id. With \"Connect\": the authorized site.",
+        "fr": "Avec une clé Fleet : tous les sites qu'elle couvre, avec leur identifiant. Avec « Connecter » : le site autorisé.",
+        "de": "Mit einem Fleet-API-Schlüssel: alle abgedeckten Standorte mit ihrer ID. Mit „Verbinden“: der freigegebene Standort.",
+        "es": "Con una clave Fleet: todos los sitios que cubre, con su ID. Con «Conectar»: el sitio autorizado."
       },
       "timeout_seconds": 30
     },
@@ -273,10 +260,10 @@
         "es": "Uso de la API"
       },
       "description": {
-        "en": "How many SolarEdge requests were used today, and how many refreshes are left.",
-        "fr": "Nombre de requêtes SolarEdge utilisées aujourd'hui, et rafraîchissements restants.",
-        "de": "Wie viele SolarEdge-Anfragen heute verbraucht wurden und wie viele Aktualisierungen noch übrig sind.",
-        "es": "Cuántas solicitudes de SolarEdge se han usado hoy y cuántas actualizaciones quedan."
+        "en": "SolarEdge requests used today, against the daily share of the monthly credits, and the actual refresh interval.",
+        "fr": "Requêtes SolarEdge utilisées aujourd'hui, face à la part quotidienne des crédits mensuels, et intervalle de rafraîchissement réel.",
+        "de": "Heute verbrauchte SolarEdge-Anfragen im Verhältnis zum Tagesanteil der monatlichen Credits und das tatsächliche Aktualisierungsintervall.",
+        "es": "Solicitudes de SolarEdge usadas hoy frente a la parte diaria de los créditos mensuales, y el intervalo de actualización real."
       },
       "timeout_seconds": 15
     }

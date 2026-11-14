@@ -19,11 +19,19 @@
 // -----------------------------------------------------------------------------
 
 import { GladysIntegration, logger } from '@gladysassistant/integration-sdk';
-import { connectionFingerprint, isConfigured, normalizeConfig } from './src/config.js';
+import {
+  connectionFingerprint,
+  isConfigured,
+  normalizeConfig,
+  tokensToConfig,
+} from './src/config.js';
 import { SolarEdgeService } from './src/solaredge/service.js';
 import { ERROR_CODES, SolarEdgeError } from './src/solaredge/client.js';
+import { createConnectHandlers } from './src/connect.js';
+import { FEATURE as GRID_FEATURE } from './src/devices/grid.js';
 import {
   ACTIONS,
+  CONNECT_STATUS,
   MISSING_KEY_STATUS,
   NOT_CONFIGURED_MESSAGE,
   WIDGET_ACTIONS,
@@ -59,6 +67,10 @@ let retryTimer = null;
 let retryDelay = 0;
 // Last transport published, to avoid re-publishing an unchanged badge.
 let lastTransportKey = null;
+// The status line was turned red by a cycle (an authorization to renew).
+let statusDown = false;
+// Tokens of a service being rebuilt for the same application (see onConfigUpdated).
+let pendingTokens = null;
 // Which snapshot each device already published on a tick (src/publisher.js).
 const publisher = new SnapshotPublisher(gladys);
 // The internal polling timer: the source of the states (src/poller.js).
@@ -66,8 +78,19 @@ const poller = new SnapshotPoller(gladys, publisher, () => ({ context, service }
   onSuccess: async (snapshot) => {
     nudgeWidgets(snapshot);
     await reportHealth(null);
+    if (statusDown) {
+      statusDown = false;
+      await setStatus(true);
+    }
   },
-  onError: (err) => reportHealth(err),
+  onError: async (err) => {
+    await reportHealth(err);
+    // Only the user can fix these: say it where they look, the status line.
+    if (err?.code === ERROR_CODES.RECONNECT || err?.code === ERROR_CODES.API_RETIRED) {
+      statusDown = true;
+      await setStatus(false, describeError(err));
+    }
+  },
 });
 // Devices `onPoll` already warned about, so an unknown device is one line,
 // not one per minute.
@@ -85,7 +108,7 @@ const RETRY_MAX_DELAY = 1_800_000;
 const RETRY_QUOTA_DELAY = 3_600_000;
 // Requests kept aside for the user's own actions ("Test the connection",
 // "Refresh now") so a retry loop can never leave them with nothing to press.
-const BUDGET_RESERVE = 12;
+const BUDGET_RESERVE = 3;
 
 // --- Discovery: Gladys asks for the list of devices --------------------------
 gladys.onScanRequest(async () => {
@@ -240,17 +263,50 @@ function nudgeWidgets(snapshot) {
   }
 }
 
+// --- "Connect" (OAuth 2.0, Gladys 5.2+): src/connect.js ----------------------
+const connect = createConnectHandlers({
+  gladys,
+  getConfig: () => config,
+  onConnected: async () => {
+    // The core does not echo our own setConfig: read the stored config back.
+    config = normalizeConfig(await gladys.getConfig());
+    lastBootstrapFailure = null;
+    if (service && service.client.mode === 'oauth') {
+      service.updateConfig(config);
+    } else {
+      service = null;
+      context = null;
+    }
+    await bootstrap({ force: true });
+  },
+});
+gladys.onOAuthAuthorizeUrl(connect.authorizeUrl);
+gladys.onOAuthCallback(connect.callback);
+
+/** Save a renewed token pair: the old refresh token no longer works. */
+async function saveTokens(tokens) {
+  await gladys.setConfig(tokensToConfig(tokens));
+  config = { ...config, oauth_tokens: { ...tokens } };
+}
+
 // --- Configuration updated by the user ---------------------------------------
 gladys.onConfigUpdated(async (newConfig) => {
   logger.info('onConfigUpdated -> new configuration received');
   // A new setting deserves its own error line, even if it fails like the last one.
   lastBootstrapFailure = null;
+  const previous = config;
   const previousFingerprint = connectionFingerprint(config);
   config = normalizeConfig(newConfig);
 
   if (!service || connectionFingerprint(config) !== previousFingerprint) {
-    // The API key or the site changed: everything cached (site details,
+    // The credentials or the site changed: everything cached (site details,
     // capabilities, snapshot, request counter) is about another installation.
+    // Same application, though: keep the newest tokens, they may not be saved
+    // yet (a failed save, a renewal in flight) and the stored ones are dead.
+    pendingTokens =
+      service?.client.mode === 'oauth' && previous.client_id === config.client_id
+        ? service.client.tokens
+        : null;
     service = null;
     context = null;
   } else {
@@ -290,18 +346,30 @@ async function bootstrap({ force = false } = {}) {
   cancelBootstrapRetry();
 
   if (!isConfigured(config)) {
-    logger.warn('No SolarEdge API key configured yet');
-    await setStatus(false, MISSING_KEY_STATUS);
+    if (config.auth_mode === 'connect') {
+      logger.warn('SolarEdge application filled in, waiting for "Connect"');
+      await setStatus(false, CONNECT_STATUS);
+    } else {
+      logger.warn('No SolarEdge V2 credentials configured yet');
+      await setStatus(false, MISSING_KEY_STATUS);
+    }
     return;
   }
 
   if (!service) {
-    service = new SolarEdgeService(config);
+    service = new SolarEdgeService(config, {
+      onTokens: saveTokens,
+      onImportOffset: (offset) => gladys.setConfig({ import_index_offset: offset }),
+    });
+    if (pendingTokens) {
+      service.client.adoptTokens(pendingTokens);
+      pendingTokens = null;
+    }
   }
 
-  // Detecting the installation costs 3 to 4 SolarEdge requests. Retrying that
+  // Detecting the installation costs 5 to 9 SolarEdge requests. Retrying that
   // blindly is how a transient failure turns into a permanent one: the retry
-  // loop eats the 300/day budget, and then EVERY call fails with a spent quota
+  // loop eats the daily budget, and then EVERY call fails with a spent quota
   // — including the buttons the user would press to diagnose it.
   const usage = service.usage;
   if (usage.remaining <= BUDGET_RESERVE) {
@@ -321,6 +389,7 @@ async function bootstrap({ force = false } = {}) {
     const site = await service.getSite();
 
     context = { config, siteId, site, capabilities };
+    service.seedImportIndex(lastImportIndex(context));
 
     const devices = buildDiscoveredDevices(gladys, context);
     await gladys.publishDiscoveredDevices(devices);
@@ -339,8 +408,15 @@ async function bootstrap({ force = false } = {}) {
     await setStatus(true);
     retryDelay = 0;
     lastBootstrapFailure = null;
-    // The states now come from our own timer, at the user's refresh interval.
-    poller.start(config.poll_frequency * 1000);
+    // The states now come from our own timer, at the user's refresh interval
+    // stretched to fit the monthly credits.
+    const interval = service.refreshInterval();
+    if (interval > config.poll_frequency) {
+      logger.info(
+        `Refreshing every ${Math.round(interval / 60)} min to stay within ${config.monthly_credits} SolarEdge credits a month`,
+      );
+    }
+    poller.start(interval * 1000);
   } catch (err) {
     // `err.code` is the SolarEdge failure class, `err.status` the HTTP status:
     // both matter to tell "bad key" from "quota spent" from "Gladys refused
@@ -357,9 +433,24 @@ async function bootstrap({ force = false } = {}) {
     // A failed re-detection (a reconnection while SolarEdge hiccups) keeps
     // the site known: keep publishing for it in the meantime.
     if (context && !poller.running) {
-      poller.start(config.poll_frequency * 1000);
+      poller.start(service.refreshInterval() * 1000);
     }
   }
+}
+
+/**
+ * The import index Gladys last stored, from the created Grid device: the
+ * anchor that keeps the index continuous across the V1 -> V2 change of source.
+ */
+function lastImportIndex(ctx) {
+  const id = gladys.externalIds('solaredge-grid', ctx.siteId).feature(GRID_FEATURE.IMPORTED_INDEX);
+  for (const device of gladys.devices ?? []) {
+    const feature = device.features?.find((f) => f.external_id === id);
+    if (feature && typeof feature.last_value === 'number') {
+      return feature.last_value;
+    }
+  }
+  return null;
 }
 
 /**
@@ -447,13 +538,20 @@ async function setStatus(connected, message) {
  * Retry the bootstrap with an exponential backoff, capped at 30 minutes — and
  * at a full hour when the quota is what failed, since it only resets at UTC
  * midnight and every attempt still spends requests we will need tomorrow.
+ * A refused authorization or a retired API is not retried: only the user can
+ * fix it, and the next configuration change (or "Connect") bootstraps again.
  *
  * The retry does NOT force a re-probe: forcing would discard capabilities that
  * a concurrent attempt may have just resolved, for no gain.
  */
 function scheduleBootstrapRetry(err) {
+  if (err?.code === ERROR_CODES.RECONNECT || err?.code === ERROR_CODES.API_RETIRED) {
+    return;
+  }
   const quotaSpent =
-    err?.code === ERROR_CODES.QUOTA_EXCEEDED || err?.code === ERROR_CODES.RATE_LIMITED;
+    err?.code === ERROR_CODES.QUOTA_EXCEEDED ||
+    err?.code === ERROR_CODES.RATE_LIMITED ||
+    err?.code === ERROR_CODES.CREDITS_EXHAUSTED;
   retryDelay = quotaSpent
     ? RETRY_QUOTA_DELAY
     : retryDelay === 0
