@@ -5,6 +5,7 @@ import {
   connectionFingerprint,
   isConfigured,
   normalizeConfig,
+  tokensToConfig,
 } from '../src/config.js';
 
 test('normalizeConfig returns the defaults when called with no argument', () => {
@@ -15,14 +16,9 @@ test('normalizeConfig returns the defaults when called with no argument', () => 
 });
 
 test('normalizeConfig coerces the numbers coming from the generated form', () => {
-  const config = normalizeConfig({
-    poll_frequency: '600',
-    energy_details_frequency: '3600',
-    daily_request_limit: '250',
-  });
-  assert.equal(config.poll_frequency, 600);
-  assert.equal(config.energy_details_frequency, 3600);
-  assert.equal(config.daily_request_limit, 250);
+  const config = normalizeConfig({ poll_frequency: '1800', monthly_credits: '20000' });
+  assert.equal(config.poll_frequency, 1800);
+  assert.equal(config.monthly_credits, 20000);
 });
 
 test('normalizeConfig falls back to the default for an unusable number', () => {
@@ -46,10 +42,31 @@ test('an unknown currency falls back to the default instead of breaking a featur
   assert.equal(normalizeConfig({ currency: 'dollar' }).currency, 'dollar');
 });
 
-test('isConfigured only needs the API key: the site can be auto-detected', () => {
+const TOKENS = {
+  accessToken: 'access',
+  refreshToken: 'refresh',
+  expiresAt: 1_000,
+  obtainedAt: 500,
+};
+const APP = { client_id: 'client', client_secret: 'secret', site_id: '1' };
+
+test('the auth mode: an application wins over a (retired V1) key left in the field', () => {
+  assert.equal(normalizeConfig().auth_mode, 'none');
+  assert.equal(normalizeConfig({ api_key: 'KEY' }).auth_mode, 'fleet');
+  assert.equal(normalizeConfig({ ...APP, api_key: 'OLDV1' }).auth_mode, 'connect');
+  const connected = normalizeConfig({ ...APP, api_key: 'OLDV1', ...tokensToConfig(TOKENS) });
+  assert.equal(connected.auth_mode, 'oauth');
+  assert.deepEqual(connected.oauth_tokens, TOKENS);
+  // An application missing its secret is not an application.
+  assert.equal(normalizeConfig({ client_id: 'client', api_key: 'KEY' }).auth_mode, 'fleet');
+});
+
+test('isConfigured needs a Fleet key or a connected application', () => {
   assert.equal(isConfigured(normalizeConfig()), false);
   assert.equal(isConfigured(normalizeConfig({ api_key: '' })), false);
   assert.equal(isConfigured(normalizeConfig({ api_key: 'KEY' })), true);
+  assert.equal(isConfigured(normalizeConfig(APP)), false, '"Connect" not done yet');
+  assert.equal(isConfigured(normalizeConfig({ ...APP, ...tokensToConfig(TOKENS) })), true);
 });
 
 test('the fingerprint changes exactly when the client must be rebuilt', () => {
@@ -67,5 +84,20 @@ test('the fingerprint changes exactly when the client must be rebuilt', () => {
   assert.notEqual(
     connectionFingerprint(normalizeConfig({ api_key: 'KEY', site_id: '2' })),
     connectionFingerprint(base),
+  );
+});
+
+test('rotating tokens never rebuild the client; a new application does', () => {
+  const connected = normalizeConfig({ ...APP, ...tokensToConfig(TOKENS) });
+  const rotated = normalizeConfig({
+    ...APP,
+    ...tokensToConfig({ ...TOKENS, refreshToken: 'refresh-2', obtainedAt: 900 }),
+  });
+  assert.equal(connectionFingerprint(rotated), connectionFingerprint(connected));
+  assert.notEqual(
+    connectionFingerprint(
+      normalizeConfig({ ...APP, client_id: 'other', ...tokensToConfig(TOKENS) }),
+    ),
+    connectionFingerprint(connected),
   );
 });

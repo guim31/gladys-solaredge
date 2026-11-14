@@ -41,7 +41,7 @@ test('test_connection names the site and what it can report', async () => {
 test('test_connection on a production-only site does not promise a battery', async () => {
   const message = await ACTIONS.test_connection(
     createFakeGladys(),
-    createDeps({ overrides: { flow: {}, energy: { unit: 'Wh', meters: [] } } }),
+    createDeps({ overrides: { devices: [] } }),
   );
   assert.match(message.fr, /production solaire\./);
   assert.equal(/batterie/.test(message.fr), false);
@@ -49,6 +49,7 @@ test('test_connection on a production-only site does not promise a battery', asy
 
 test('test_connection surfaces a rejected API key instead of swallowing it', async () => {
   const deps = createDeps({ overrides: { sites: new Error('SolarEdge refused the API key') } });
+  // (A Fleet key and no site id: the sites listing comes first.)
   await assert.rejects(
     () => ACTIONS.test_connection(createFakeGladys(), deps),
     /refused the API key/,
@@ -61,8 +62,8 @@ test('list_sites shows the ids the user has to choose from', async () => {
     createDeps({
       overrides: {
         sites: [
-          { id: 1, name: 'Maison' },
-          { id: 2, name: 'Bureau' },
+          { siteId: 1, name: 'Maison' },
+          { siteId: 2, name: 'Bureau' },
         ],
       },
     }),
@@ -84,14 +85,23 @@ test('refresh_now reports how many states were published', async () => {
   assert.match(message.fr, /12 état/);
 });
 
-test('api_usage translates the remaining budget into refresh cycles', async () => {
-  const deps = createDeps();
-  deps.service.client.usage = { day: '2024-05-18', count: 100, limit: 300, remaining: 200 };
+test('api_usage tells the daily share and the actual refresh interval', async () => {
+  const deps = createDeps({ overrides: { devices: [] } });
+  await deps.service.getCapabilities();
+  deps.service.client.usage = { day: '2024-05-18', count: 10, limit: 64, remaining: 54 };
 
   const message = await ACTIONS.api_usage(createFakeGladys(), deps);
-  assert.match(message.fr, /100\/300/);
-  // 200 requests left, 2 per cycle without the storage telemetry.
-  assert.match(message.fr, /100 cycle/);
+  assert.match(message.fr, /10\/64/);
+  assert.match(message.fr, /2000 crédits par mois/);
+  // A lone inverter: 2 requests a refresh, 28 refreshes a day.
+  assert.match(message.fr, /coûte 2 requête/);
+  assert.match(message.fr, /toutes les 51 min/);
+});
+
+test('list_sites with "Connect" names the one authorized site', async () => {
+  const deps = createDeps({ overrides: { mode: 'oauth' }, config: { site_id: '1234567' } });
+  const message = await ACTIONS.list_sites(createFakeGladys(), deps);
+  assert.match(message.fr, /1234567 — Maison/);
 });
 
 // --- Widget buttons ----------------------------------------------------------
@@ -109,8 +119,8 @@ test('a refresh the budget refuses becomes a toast, not a failed action', async 
     },
   });
   const message = await WIDGET_ACTIONS.refresh(createFakeGladys(), deps);
-  assert.match(message.fr, /Quota de requêtes SolarEdge atteint/);
-  assert.match(message.en, /quota reached/);
+  assert.match(message.fr, /Budget de requêtes SolarEdge atteint/);
+  assert.match(message.en, /request budget reached/);
   for (const text of Object.values(message)) {
     assert.ok(text.length <= 200, 'a toast is 200 characters at most per language');
   }
@@ -123,7 +133,17 @@ test('describeError blames the right side', () => {
   );
   assert.match(
     describeError(new SolarEdgeError('x', { code: ERROR_CODES.UNAUTHORIZED })).fr,
-    /clé d'API/,
+    /clés d'API V1 ne marchent plus/,
+  );
+  // The 410 of a retired V1 endpoint says "migrate", not "unexpected error".
+  const retired = describeError(
+    new SolarEdgeError('x', { code: ERROR_CODES.API_RETIRED, status: 410 }),
+  );
+  assert.match(retired.fr, /migrez vers la V2/);
+  assert.match(retired.en, /migrate to V2/);
+  assert.match(
+    describeError(new SolarEdgeError('x', { code: ERROR_CODES.RECONNECT })).fr,
+    /Connecter/,
   );
   assert.match(
     describeError(new SolarEdgeError('site 1', { code: ERROR_CODES.NOT_FOUND })).fr,
@@ -131,7 +151,7 @@ test('describeError blames the right side', () => {
   );
   assert.match(
     describeError(new SolarEdgeError('x', { code: ERROR_CODES.RATE_LIMITED })).fr,
-    /Quota/,
+    /Budget de requêtes/,
   );
   const notReady = describeError(new SolarEdgeError('x', { code: ERROR_CODES.NOT_READY }));
   assert.match(notReady.fr, /pas encore pu joindre SolarEdge/);

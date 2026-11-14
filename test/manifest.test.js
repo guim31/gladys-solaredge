@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { ACTIONS, WIDGET_ACTIONS } from '../src/actions.js';
 import { DEFAULT_CONFIG } from '../src/config.js';
+import { OAUTH_FIELD } from '../src/connect.js';
 import {
   DEFAULT_INTERVAL,
   ENERGY_FLOW_INTERVALS,
@@ -53,16 +54,33 @@ test('every non-section field the code reads is declared in the manifest', () =>
   for (const key of Object.keys(DEFAULT_CONFIG)) {
     assert.ok(declared.has(key), `"${key}" has a default but no field in the manifest`);
   }
-  // The API key is a `secret` field: the manifest forbids a default on it, so
-  // it is declared without ever appearing in DEFAULT_CONFIG.
+  // Secret fields: the manifest forbids a default on them, so they are
+  // declared without ever appearing in DEFAULT_CONFIG.
   assert.ok(declared.has('api_key'));
+  assert.ok(declared.has('client_secret'));
 });
 
-test('the API key is a secret field and is required', () => {
-  const field = manifest.config_schema.find((f) => f.key === 'api_key');
-  assert.equal(field.type, 'secret');
-  assert.equal(field.required, true);
-  assert.equal(field.default, undefined, 'a secret field cannot carry a default');
+test('the credentials: two optional secrets and the "Connect" button', () => {
+  for (const key of ['client_secret', 'api_key']) {
+    const field = manifest.config_schema.find((f) => f.key === key);
+    assert.equal(field.type, 'secret');
+    // Either one suffices: neither can be required by the form.
+    assert.equal(field.required, false);
+    assert.equal(field.default, undefined, 'a secret field cannot carry a default');
+  }
+  const connect = manifest.config_schema.find((f) => f.type === 'oauth2');
+  assert.equal(connect.key, OAUTH_FIELD);
+  assert.match(indexSource, /gladys\.onOAuthAuthorizeUrl\(connect\.authorizeUrl\)/);
+  assert.match(indexSource, /gladys\.onOAuthCallback\(connect\.callback\)/);
+  // The oauth2 field type exists since Gladys 5.2.0.
+  assert.equal(manifest.gladys_version, '>=5.2.0');
+});
+
+test('the OAuth tokens are stored outside the schema, never as a form field', () => {
+  const keys = new Set(manifest.config_schema.map((f) => f.key));
+  for (const key of ['oauth_access_token', 'oauth_refresh_token', 'oauth_expires_at']) {
+    assert.equal(keys.has(key), false, key);
+  }
 });
 
 test('section fields are purely presentational', () => {

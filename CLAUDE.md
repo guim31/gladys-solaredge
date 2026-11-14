@@ -2,9 +2,57 @@
 
 Production solaire, consommation, échanges réseau et batterie depuis SolarEdge.
 
-Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.15.0, `gladys_version` `>=5.1.0`). Mainteneur : Guilhem (`guim31`).
+Intégration externe pour [Gladys Assistant](https://gladysassistant.com), bâtie sur le template officiel `GladysAssistant/integration-template-js` (SDK `@gladysassistant/integration-sdk` ^0.15.0, `gladys_version` `>=5.2.0` depuis la migration V2). Mainteneur : Guilhem (`guim31`).
 
 Ce fichier rassemble ce qu'une session de code doit savoir et qui ne se lit pas dans le code : choix de conception, faits vérifiés en réel, pièges déjà payés. Le compléter quand un nouveau piège est découvert.
+
+## Migration vers l'API Monitoring V2 (14/11/2026, issue #11, branche `fix/monitoring-api-v2`)
+
+SolarEdge a arrêté la V1 le **3 novembre 2026** : toute requête V1 répond **410** (« API Version
+Deprecated », en-têtes `deprecation`/`sunset`), les clés V1 sont refusées. Sources lues : la doc
+officielle (Stoplight, `api-docs.solaredge.com/docs/developer-platform` : « Migrating from V1 to
+V2 », « Authentication », « Tiers and Rate Limits », « Homeowner and Self-Access Guide ») et la
+spec OpenAPI « Basic Monitoring API » 2.2.0 (exportée dans `EVWorth/solaredge`, `specs/`). Le
+contenu des pages Stoplight se lit en JSON par
+`https://stoplight.io/api/v1/projects/cHJqOjMxMjQ1Mw/nodes/<id>` (le site est une SPA).
+
+- **Authentification** : un particulier n'a **que l'OAuth** (application « Site Access » de son
+  propre compte développeur, portées `SITE_DATA DEVICE_DATA`, `Authorization: Bearer`) ; la clé
+  `X-API-Key` est réservée aux comptes installateurs (« Fleet Access »). Jeton d'accès 2 h ; le
+  refresh token **tourne** (l'ancien meurt à chaque renouvellement) et expire après 14 jours sans
+  usage. Échange et renouvellement : `POST /v2/oauth2/token` en **JSON**. Un jeton OAuth ne peut
+  pas lister les sites (`GET /sites` = clé Fleet seulement) : l'identifiant du site est **saisi**
+  (Gladys ne relaie que `code` et `state`, pas le `site_id` que SolarEdge ajoute au retour).
+- **« Connecter »** : champ `oauth2` (Gladys **5.2.0**), `onOAuthAuthorizeUrl`/`onOAuthCallback`
+  dans `src/connect.js`. URI de redirection à déclarer chez SolarEdge :
+  `https://my.gladysassistant.com/redirect/oauth` (page de rebond de Gladys, qui porte l'adresse
+  de l'instance dans `state`). Jetons stockés par `setConfig` hors schéma (`oauth_*`) ; le cœur
+  ne renvoie **pas** `CONFIG_UPDATED` après un `setConfig` de l'intégration (seulement après une
+  sauvegarde du formulaire) : relire `getConfig()`. Les jetons ne sont pas dans
+  `connectionFingerprint` ; `adoptTokens` ne prend que des jetons plus récents (`obtainedAt`).
+- **Budget** : offre Free = **2 000 crédits/mois pour tout le compte développeur**, 1 par appel
+  réussi (erreurs gratuites), 10 appels/min. 429 « rate limit » (`x-ratelimit-remaining-minute: 0`,
+  `retry-after`) ≠ 429 « crédits du mois épuisés » (bloqué jusqu'au cycle suivant). Le client
+  plafonne à 1/31 de `monthly_credits` par jour ; `refreshInterval()` allonge l'intervalle jusqu'à
+  tenir (≈ 51 min onduleur seul, ≈ 79 min avec compteur, ≈ 105 min compteur + batterie).
+- **Endpoints** : `overview` sans période = bilan du jour local (production, `toGrid`,
+  consommation, `fromPv`/`fromStorage`/`fromGrid`) ; puissance PV par `power` (15 min, la nuit des
+  seaux `null` → publiée 0 W) sauf compteur de production ; `meters/telemetry` et
+  `storage/telemetry` pour les puissances ; mois/année (`energy?resolution=MONTH`), production
+  totale (`lifetime-energy`) et index soutiré (`meters/lifetime-energy?meters=PURCHASED`, le
+  compteur embarqué : plus de reconstitution depuis la mise en service) **une fois par jour**,
+  gardés en **base** (`valeur − jour`) : `base + overview du jour` suit la journée sans requête.
+  Pas utilisés : `power-flow` et `per-destination` (Advanced, offres Business Pro+). Plus de
+  revenu en V2 (capacité `revenue` toujours fausse, code du revenu laissé dormant), plus de
+  drapeau « critique » batterie (Batterie faible = niveau ≤ 10 %).
+- Dates V2 : `from`/`to` ISO 8601 **avec fuseau** (sinon 400) ; les horodatages renvoyés sont en
+  heure locale du site avec décalage. Unités en majuscules (`WH`, `KW`). `location.timezone` (et
+  non `timeZone`), `siteId` (et non `id`) : `parseSiteDetails` rétablit les noms V1.
+- **Jamais testé avec un vrai compte V2** : fixtures construites d'après la spec, pas enregistrées.
+  Vérifié en réel sans identifiants : `GET /v2/...` → 401, `POST /v2/oauth2/token` → 400
+  `invalid_client`, `connect.solaredge.com/authorize` → 200. À faire vérifier par un testeur : que
+  SolarEdge accepte l'URI de rebond de Gladys et renvoie bien `state`, les formes réelles de
+  `overview` sur un site sans compteur, et `devices` (tableau nu ?).
 
 ## État au 09/10/2026 (1.3.0)
 

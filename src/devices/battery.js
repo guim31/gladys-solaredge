@@ -1,16 +1,16 @@
 // -----------------------------------------------------------------------------
 // Device: HOME BATTERY (SolarEdge Energy Bank / LG RESU…).
 //
-// Only published when the site really has storage — `currentPowerFlow` exposes
-// a STORAGE node in that case, and nothing at all otherwise.
+// Only published when the site really has storage: a battery in the inventory
+// whose `storage/telemetry` gives a reading.
 //
 // Like the grid device, the battery power is SIGNED:
 //     > 0  charging (energy going INTO the battery)
 //     < 0  discharging (the battery is powering the house)
 //
-// Two extra features (stored energy, temperature) come from the `storageData`
-// endpoint, which costs one more request per cycle: they only exist when the
-// user turns the "Detailed battery telemetry" setting on.
+// Two extra features (stored energy, temperature) only exist when the user
+// turns the "Detailed battery telemetry" setting on: the temperature comes from
+// `storage/status`, one more request per cycle.
 // -----------------------------------------------------------------------------
 
 import {
@@ -159,8 +159,8 @@ export const battery = {
       return [];
     }
 
-    // `storageData` gives a finer state of charge than the power flow when the
-    // user enabled it; otherwise the flow's `chargeLevel` is the reference.
+    // Both come from the same storage telemetry in V2; `storage` stays the
+    // first choice, as in V1 where it was the finer one.
     const level = snapshot.storage?.level ?? battery.level;
 
     const numericStates = [

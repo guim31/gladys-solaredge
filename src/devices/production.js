@@ -133,8 +133,8 @@ export const production = {
     const ids = gladys.externalIds(DEVICE_TYPE, context.siteId);
     const { flow, overview } = snapshot;
 
-    // `currentPowerFlow` is the freshest source for the instantaneous power;
-    // `overview` is the fallback for sites whose flow endpoint stays empty.
+    // The latest 15-minute PV power (`power`, or a production meter);
+    // `overview` has no instantaneous power in V2, the fallback stays null.
     const power = flow?.pv ?? overview?.currentPower ?? null;
 
     const entries = [

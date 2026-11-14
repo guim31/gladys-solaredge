@@ -16,6 +16,7 @@ import { GladysApiError, validateWidgetContent } from '@gladysassistant/integrat
 import { LANGUAGES } from '../src/i18n.js';
 import {
   ACTIONS,
+  CONNECT_STATUS,
   MISSING_KEY_STATUS,
   NOT_CONFIGURED_MESSAGE,
   QUOTA_TRANSPORT_MESSAGE,
@@ -36,21 +37,11 @@ import { buildTransportEntries } from '../src/devices/index.js';
 import { normalizeConfig } from '../src/config.js';
 import { ERROR_CODES, SolarEdgeError } from '../src/solaredge/client.js';
 import { SolarEdgeService } from '../src/solaredge/service.js';
-import {
-  parseEnergyDetails,
-  parseOverview,
-  parsePowerFlow,
-  parseStorageData,
-} from '../src/solaredge/snapshot.js';
+import { parseSiteDetails } from '../src/solaredge/snapshot.js';
 import { createFakeGladys } from './helpers/fakeGladys.js';
-import {
-  CURRENT_POWER_FLOW,
-  ENERGY_DETAILS,
-  OVERVIEW,
-  SITE_DETAILS,
-  STORAGE_DATA,
-  createFakeClient,
-} from './helpers/solaredgeFixtures.js';
+import { SITE_DETAILS, SNAPSHOT, createFakeClient } from './helpers/solaredgeFixtures.js';
+
+const SITE = parseSiteDetails(SITE_DETAILS);
 
 const manifest = JSON.parse(
   await readFile(new URL('../gladys-assistant-integration.json', import.meta.url), 'utf8'),
@@ -116,8 +107,8 @@ function manifestBound(path) {
 
 test('every multi-language object of the manifest has en, fr, de and es', () => {
   const found = collect(manifest, 'manifest');
-  // The walker must see the whole manifest: 46 objects at the time of writing.
-  assert.ok(found.length >= 46, `only ${found.length} multi-language objects found`);
+  // The walker must see the whole manifest: 45 objects at the time of writing.
+  assert.ok(found.length >= 45, `only ${found.length} multi-language objects found`);
   for (const { path, value } of found) {
     assertLocalized(value, path, manifestBound(path));
   }
@@ -153,6 +144,7 @@ test('the widget labels of the code fit a tile, the long texts a body', () => {
 test('connection statuses and the quota badge are in every language', () => {
   assertLocalized(NOT_CONFIGURED_MESSAGE, 'NOT_CONFIGURED_MESSAGE', WIDGET_MESSAGE);
   assertLocalized(MISSING_KEY_STATUS, 'MISSING_KEY_STATUS');
+  assertLocalized(CONNECT_STATUS, 'CONNECT_STATUS');
   assertLocalized(quotaNearlySpentStatus({ count: 299, limit: 300 }), 'quotaNearlySpentStatus');
   assertLocalized(QUOTA_TRANSPORT_MESSAGE, 'QUOTA_TRANSPORT_MESSAGE', TRANSPORT_MESSAGE);
 
@@ -179,8 +171,7 @@ test('every failure the user can read is in every language, short enough for a t
 
 function createDeps({ capabilities, refreshAll } = {}) {
   const config = normalizeConfig({ api_key: 'K' });
-  const overrides =
-    capabilities === 'production-only' ? { flow: {}, energy: { unit: 'Wh', meters: [] } } : {};
+  const overrides = capabilities === 'production-only' ? { devices: [] } : {};
   const service = new SolarEdgeService(config, {
     client: createFakeClient(overrides),
     now: () => new Date('2024-05-18T13:42:00Z'),
@@ -225,21 +216,15 @@ test('every widget content is in every language and reaches the dashboard untrun
   const context = {
     config: normalizeConfig({ api_key: 'K', storage_details: true }),
     siteId: '1234567',
-    site: SITE_DETAILS,
+    site: SITE,
     capabilities: full,
   };
-  const snapshot = {
-    flow: parsePowerFlow(CURRENT_POWER_FLOW),
-    overview: parseOverview(OVERVIEW),
-    energy: parseEnergyDetails(ENERGY_DETAILS),
-    storage: parseStorageData(STORAGE_DATA),
-    fetchedAt: '2024-05-18T13:42:00Z',
-  };
+  const snapshot = SNAPSHOT;
   const view = (snap, capabilities = full) => ({
     features: widgetFeatures(gladys, { ...context, capabilities }),
     snapshot: snap,
     currency: context.config.currency,
-    timeZone: SITE_DETAILS.location?.timeZone,
+    timeZone: SITE.location?.timeZone,
   });
   const contents = {
     energyFlow: buildEnergyFlowContent(view(snapshot), {}),

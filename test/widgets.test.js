@@ -27,20 +27,11 @@ import {
 import { buildDiscoveredDevices } from '../src/devices/index.js';
 import { LANGUAGES } from '../src/i18n.js';
 import { normalizeConfig } from '../src/config.js';
-import {
-  parseEnergyDetails,
-  parseOverview,
-  parsePowerFlow,
-  parseStorageData,
-} from '../src/solaredge/snapshot.js';
+import { parseSiteDetails } from '../src/solaredge/snapshot.js';
 import { createFakeGladys } from './helpers/fakeGladys.js';
-import {
-  CURRENT_POWER_FLOW,
-  ENERGY_DETAILS,
-  OVERVIEW,
-  SITE_DETAILS,
-  STORAGE_DATA,
-} from './helpers/solaredgeFixtures.js';
+import { SITE_DETAILS, SNAPSHOT } from './helpers/solaredgeFixtures.js';
+
+const SITE = parseSiteDetails(SITE_DETAILS);
 
 const gladys = createFakeGladys();
 const FULL = {
@@ -63,22 +54,22 @@ function createContext({ capabilities = FULL, config = {} } = {}) {
   return {
     config: normalizeConfig({ api_key: 'K', ...config }),
     siteId: '1234567',
-    site: SITE_DETAILS,
+    site: SITE,
     capabilities,
   };
 }
 
-/** The fixtures' spring afternoon, as the service would snapshot it (13:42 UTC). */
-function createSnapshot({
-  flow = CURRENT_POWER_FLOW,
-  storage = STORAGE_DATA,
-  overview = OVERVIEW,
-} = {}) {
+/**
+ * The fixtures' spring afternoon, as the service snapshots it (13:42 UTC).
+ * V2 reports no revenue; the widgets keep its row for a snapshot that has
+ * one, so the default here carries 3.21 to keep that path covered.
+ */
+function createSnapshot({ flow, battery, storage, overview } = {}) {
   return {
-    flow: parsePowerFlow(flow),
-    overview: parseOverview(overview),
-    energy: parseEnergyDetails(ENERGY_DETAILS),
-    storage: storage ? parseStorageData(storage) : null,
+    ...SNAPSHOT,
+    flow: { ...SNAPSHOT.flow, ...flow, ...(battery !== undefined ? { battery } : {}) },
+    overview: { ...SNAPSHOT.overview, revenueToday: 3.21, ...overview },
+    storage: storage === undefined ? SNAPSHOT.storage : storage,
     fetchedAt: '2024-05-18T13:42:00Z',
   };
 }
@@ -223,13 +214,9 @@ test('energy_flow on a full site: four live tiles, three-series chart, balance, 
 test('energy_flow on a production-only site: no meter, no battery, no error', () => {
   const context = createContext({ capabilities: PRODUCTION_ONLY });
   const snapshot = createSnapshot({
-    flow: { unit: 'kW', connections: [], PV: { status: 'Active', currentPower: 4.2 } },
+    flow: { pv: 4200, load: null, grid: null, battery: null },
     storage: null,
-    overview: {
-      ...OVERVIEW,
-      lifeTimeData: { energy: 18_540_000 },
-      lastDayData: { energy: 21_400 },
-    },
+    overview: { revenueToday: null },
   });
   snapshot.energy = null;
   const view = createView({ context, snapshot });
@@ -269,13 +256,15 @@ test('energy_flow before the first reading: live tiles, an explicit sentence, th
 });
 
 test('energy_flow: a critical battery turns its row red', () => {
-  const flow = {
-    ...CURRENT_POWER_FLOW,
-    STORAGE: { status: 'Discharging', currentPower: 0.8, chargeLevel: 9, critical: true },
-    connections: [{ from: 'Storage', to: 'Load' }],
+  const battery = {
+    power: -800,
+    level: 9,
+    energyStored: 0.86,
+    state: 'discharging',
+    critical: true,
   };
   const content = buildEnergyFlowContent(
-    createView({ snapshot: createSnapshot({ flow, storage: null }) }),
+    createView({ snapshot: createSnapshot({ battery, storage: null }) }),
     {},
   );
   const batteryRow = row(one(content, 'status'), 'Batterie');
@@ -320,13 +309,7 @@ test('production: four counters, an area chart, the revenue and the time', () =>
 
 test('production without a tariff: no revenue row, the time stays', () => {
   const context = createContext({ capabilities: { ...FULL, revenue: false } });
-  const snapshot = createSnapshot({
-    overview: {
-      ...OVERVIEW,
-      lifeTimeData: { energy: 18_540_000 },
-      lastDayData: { energy: 21_400 },
-    },
-  });
+  const snapshot = createSnapshot({ overview: { revenueToday: null } });
   const content = buildProductionContent(createView({ context, snapshot }), {});
   assertWellFormed(content, context);
   assert.deepEqual(rowLabels(one(content, 'status')), ['Actualisé à']);
@@ -360,7 +343,7 @@ test('battery with detailed telemetry: gauge, power, state, stored energy, tempe
   assert.deepEqual(rowLabels(status), ['État', 'Énergie stockée', 'Température']);
   assert.equal(row(status, 'État').value.fr, 'En charge');
   assert.equal(row(status, 'État').color, 'success');
-  // 9600 Wh usable × 62 % = 5952 Wh.
+  // The remaining energy of the storage telemetry: 5952 Wh.
   assert.deepEqual(row(status, 'Énergie stockée').value, {
     en: '5.95 kWh',
     fr: '5,95 kWh',
@@ -376,7 +359,7 @@ test('battery with detailed telemetry: gauge, power, state, stored energy, tempe
   assert.equal(one(content, 'text').text.fr, 'Actualisé à 15:42');
 });
 
-test('battery without telemetry: only what the power flow gives', () => {
+test('battery without the temperature: only what the storage telemetry gives', () => {
   const context = createContext();
   const content = buildBatteryContent(
     createView({ context, snapshot: createSnapshot({ storage: null }) }),
@@ -386,30 +369,22 @@ test('battery without telemetry: only what the power flow gives', () => {
 });
 
 test('battery states: discharging is info, idle neutral, critical adds a red row', () => {
-  const stateOf = (STORAGE, connections) => {
+  const stateOf = (battery) => {
     const content = buildBatteryContent(
-      createView({
-        snapshot: createSnapshot({
-          flow: { ...CURRENT_POWER_FLOW, STORAGE, connections },
-          storage: null,
-        }),
-      }),
+      createView({ snapshot: createSnapshot({ battery, storage: null }) }),
     );
     return one(content, 'status');
   };
-  const discharging = stateOf(
-    { status: 'Discharging', currentPower: 0.8, chargeLevel: 40, critical: false },
-    [{ from: 'Storage', to: 'Load' }],
-  );
+  const discharging = stateOf({ power: -800, level: 40, state: 'discharging', critical: false });
   assert.equal(row(discharging, 'État').value.fr, 'En décharge');
   assert.equal(row(discharging, 'État').color, 'info');
   assert.equal(row(discharging, 'Batterie faible'), undefined);
 
-  const idle = stateOf({ status: 'Idle', currentPower: 0, chargeLevel: 100, critical: false }, []);
+  const idle = stateOf({ power: 0, level: 100, state: 'idle', critical: false });
   assert.equal(row(idle, 'État').value.fr, 'Au repos');
   assert.equal(row(idle, 'État').color, 'neutral');
 
-  const low = stateOf({ status: 'Disabled', currentPower: 0, chargeLevel: 5, critical: true }, []);
+  const low = stateOf({ power: 0, level: 5, state: 'disabled', critical: true });
   assert.equal(row(low, 'État').value.fr, 'Désactivée');
   assert.equal(row(low, 'Batterie faible').color, 'danger');
   assert.deepEqual(row(low, 'Batterie faible').value, { en: 'Yes', fr: 'Oui', de: 'Ja', es: 'Sí' });

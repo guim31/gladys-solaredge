@@ -11,6 +11,37 @@ the GitHub Releases of the repository.
 
 ## [Unreleased]
 
+### Changed
+
+- **SolarEdge Monitoring API V2.** SolarEdge retired the V1 API on
+  3 November 2026: every request of versions 1.x now fails (HTTP 410, "API
+  Version Deprecated"), and the old API keys no longer work. The integration
+  now reads V2. **Action needed**: create a free SolarEdge developer account
+  and a "Site Access" application, fill in its Client ID, Client Secret and
+  your site ID, then press **Connect** (step by step in the documentation).
+  Installers can paste a V2 Fleet API key instead. Devices, features and their
+  history are kept.
+- Requires **Gladys 5.2** or later (the "Connect" button).
+- The refresh interval now adapts to the monthly SolarEdge credits (2,000 on
+  the Free plan, new **Monthly credits** setting): about every 50 minutes for a
+  lone inverter on the Free plan, as often as every 15 minutes on a paid plan.
+  **API usage** shows the interval actually used.
+- **Battery low** now means a charge level of 10 % or below: V2 no longer
+  reports SolarEdge's "critical" flag.
+
+### Removed
+
+- **Revenue today** and the **Revenue currency** setting: V2 reports no
+  revenue. On a site with a tariff, **Update** in the Discovery tab removes
+  the feature.
+- The **Daily breakdown interval** and **Daily request budget** settings,
+  replaced by the paced interval and **Monthly credits**.
+
+### Fixed
+
+- A retired-API answer (HTTP 410) now says to migrate to V2, instead of
+  "unexpected error".
+
 ### Security
 
 - Rebuilt on Node.js 24.22.1, the October 2026 security release (remote code
