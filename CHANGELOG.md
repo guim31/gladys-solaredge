@@ -11,6 +11,20 @@ the GitHub Releases of the repository.
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Connect" stopped on the Gladys redirect page** ("This page was opened
+  without any return information"). SolarEdge does not hand the `state`
+  parameter back, so the Gladys redirect page cannot find your instance. New
+  path: in your SolarEdge application, set the **Redirect URI** to
+  `http://localhost:8080/oauth/callback`; press **Connect** and approve; the
+  browser stops on a page that does not load: copy its whole address and paste
+  it into the new **Finish the connection** action. The site ID is filled in
+  from that address. The anti-forgery check is kept: only the address of a
+  connection started from your Gladys is accepted.
+
+## [2.0.0] - 2026-11-14
+
 ### Changed
 
 - **SolarEdge Monitoring API V2.** SolarEdge retired the V1 API on

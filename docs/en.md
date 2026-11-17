@@ -169,10 +169,10 @@ Self-Access" guide of the SolarEdge documentation). It is free.
 2. Click **Create Application**: a name ("Gladys", for instance), the
    **Monitoring API** service, then **Site Access**.
 3. In the OAuth configuration of the application:
-   - **Redirect URI**: the address shown in Gladys under the **Connect** button
-     (**Configuration** tab of the integration), usually
-     `https://my.gladysassistant.com/redirect/oauth`;
-   - **Origin URL**: `https://my.gladysassistant.com`;
+   - **Redirect URI**: `http://localhost:8080/oauth/callback` (the address of SolarEdge's own guide for
+     homeowners; nothing answers there, on purpose, see step 2);
+   - **Origin URL**: leave it empty, or `http://localhost:8080` if the field
+     is mandatory;
    - scopes: **SITE_DATA** and **DEVICE_DATA** (without DEVICE_DATA, only the
      production is available).
 4. Copy the **Client ID** and the **Client Secret**. The secret is shown
@@ -190,15 +190,27 @@ transfer form).
 2. Fill in the **Client ID**, the **Client Secret** and the **Site ID**, then
    **save**.
 3. Press **Connect**. The SolarEdge page opens: sign in with your mySolarEdge
-   login, pick the site if you have several, then approve. You come back to
-   Gladys and the status turns to "connected".
-4. Press **Test the connection**: the message confirms the site name and the
+   login, pick the site if you have several, then approve.
+4. The browser then stops on a page that does not load ("connection refused"
+   or similar): that is expected. Copy the **whole** address of that page (it
+   starts with `http://localhost:8080/oauth/callback?code=`), go back to
+   Gladys, paste it into the **Finish the connection** action and run it. Do
+   it within minutes: the code works once. The site ID is taken from that
+   address, and the status turns to "connected".
+5. Press **Test the connection**: the message confirms the site name and the
    list of available devices.
-5. The devices show up in the **Discovery** tab, ready to be added.
+6. The devices show up in the **Discovery** tab, ready to be added.
+
+Why the copy and paste: SolarEdge does not hand back the `state` parameter
+Gladys needs to find its way back to your instance on its own (its sign-in page
+does not forward it). The anti-forgery check is done another way: the
+integration only accepts the address of a connection started from your Gladys
+(the `external_id` value, which SolarEdge does send back).
 
 The authorization renews itself every two hours. It only expires after **14
 days without any refresh** (Gladys stopped for two weeks, for instance): the
-connection status then says so, and pressing **Connect** again is enough.
+connection status then says so: press **Connect** again, then **Finish the
+connection**.
 
 **Installers**: with an installer account and a **Fleet Access** application,
 paste the **Fleet API key** in its field instead, without "Connect". The site
@@ -317,9 +329,17 @@ key left alone in the Fleet field ends up here too.
 the authorization expired (14 days without a refresh) or was revoked: check the
 secret, save, then press **Connect**.
 
-**"Connect" shows a redirect error at SolarEdge** — the redirect URI declared
-in the SolarEdge application must be **exactly** the one shown under the
-button in Gladys.
+**After approving, a Gladys page says it cannot redirect you** — the SolarEdge
+application still has the redirect URI
+`https://my.gladysassistant.com/redirect/oauth` (advised by version 2.0.0):
+that page does not work with SolarEdge and wipes the code. Replace it with
+`http://localhost:8080/oauth/callback` in the SolarEdge developer console, then run **Connect** and **Finish
+the connection** again.
+
+**"Finish the connection" refuses the address** — paste the whole address,
+right after approving; an address from an older connection, or from one
+started before the integration restarted, is refused: press **Connect**
+again.
 
 **The Consumption and Grid devices do not appear** — your installation has no
 meter (a hardware option fitted by the installer), or the application lacks
@@ -345,6 +365,6 @@ The integration only talks to `monitoringapi.solaredge.com`, read only. The
 Client Secret and the Fleet key are stored by Gladys as secrets, never sent
 back to the interface; the access tokens are kept by the integration in its
 configuration, outside the form. During "Connect", SolarEdge sends your
-browser to the Gladys redirect page (`my.gladysassistant.com`), which sends it
-straight back to your instance: it sees the authorization code go by, useless
-without the Client Secret. No data is sent anywhere else.
+browser to `localhost`, your own computer: the authorization code goes through
+no other server, and it is useless without the Client Secret. No data is sent
+anywhere else.

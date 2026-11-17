@@ -22,11 +22,10 @@ contenu des pages Stoplight se lit en JSON par
   refresh token **tourne** (l'ancien meurt à chaque renouvellement) et expire après 14 jours sans
   usage. Échange et renouvellement : `POST /v2/oauth2/token` en **JSON**. Un jeton OAuth ne peut
   pas lister les sites (`GET /sites` = clé Fleet seulement) : l'identifiant du site est **saisi**
-  (Gladys ne relaie que `code` et `state`, pas le `site_id` que SolarEdge ajoute au retour).
+  (ou repris de l'adresse collée dans `finish_connect`).
 - **« Connecter »** : champ `oauth2` (Gladys **5.2.0**), `onOAuthAuthorizeUrl`/`onOAuthCallback`
-  dans `src/connect.js`. URI de redirection à déclarer chez SolarEdge :
-  `https://my.gladysassistant.com/redirect/oauth` (page de rebond de Gladys, qui porte l'adresse
-  de l'instance dans `state`). Jetons stockés par `setConfig` hors schéma (`oauth_*`) ; le cœur
+  dans `src/connect.js`, **plus l'action `finish_connect`** (voir « SolarEdge ne renvoie pas
+  `state` » plus bas). Jetons stockés par `setConfig` hors schéma (`oauth_*`) ; le cœur
   ne renvoie **pas** `CONFIG_UPDATED` après un `setConfig` de l'intégration (seulement après une
   sauvegarde du formulaire) : relire `getConfig()`. Les jetons ne sont pas dans
   `connectionFingerprint` ; `adoptTokens` ne prend que des jetons plus récents (`obtainedAt`).
@@ -56,9 +55,37 @@ contenu des pages Stoplight se lit en JSON par
   non `timeZone`), `siteId` (et non `id`) : `parseSiteDetails` rétablit les noms V1.
 - **Jamais testé avec un vrai compte V2** : fixtures construites d'après la spec, pas enregistrées.
   Vérifié en réel sans identifiants : `GET /v2/...` → 401, `POST /v2/oauth2/token` → 400
-  `invalid_client`, `connect.solaredge.com/authorize` → 200. À faire vérifier par un testeur : que
-  SolarEdge accepte l'URI de rebond de Gladys et renvoie bien `state`, les formes réelles de
-  `overview` sur un site sans compteur, et `devices` (tableau nu ?).
+  `invalid_client`, `connect.solaredge.com/authorize` → 200. À faire vérifier par un testeur : le
+  parcours « Terminer la connexion », les formes réelles de `overview` sur un site sans compteur,
+  et `devices` (tableau nu ?).
+
+## SolarEdge ne renvoie pas `state` (17/11/2026, tiboys t/11613, branche `fix/oauth-state`)
+
+En 2.0.0, « Connecter » s'arrêtait sur la page de rebond de Gladys : « Impossible de vous
+rediriger. Cette page a été ouverte sans information de retour » (raison `missing` de
+`decodeWrappedState`, `GladysAssistant/my.gladysassistant.com`, `assets/js/oauth-state.js`).
+
+- **Cause, lue dans le code de `connect.solaredge.com`** (`/main-version-bundle.js`) : la page
+  d'autorisation ne lit que `client_id`, `external_id` et `redirect_label` ; son `state` à elle
+  sert à son propre SSO. Elle redirige vers l'URI **enregistrée sur l'application** (pas le
+  `redirect_uri` de l'URL) avec `code` et `site_id`, plus `"&external_id=" + externalId` collé
+  tel quel. La doc « Authentication » liste bien ces trois paramètres et pas `state` (le guide
+  « Homeowner » montre un `state` renvoyé : faux). La page de rebond efface en plus la barre
+  d'adresse (`stripQueryString`) : le code est perdu, pas de copier-coller possible.
+- **Parade** : Redirect URI `http://localhost:8080/oauth/callback` (celle du guide SolarEdge) ;
+  le navigateur échoue à charger la page et garde l'adresse ; l'utilisateur la colle dans
+  l'action `finish_connect` (`connect.finish`). L'anti-CSRF passe par `external_id` (= le `state`
+  généré, gardé en mémoire, 20 flux au plus, usage unique) ; l'échange repart avec
+  `origin + pathname` de l'adresse collée ; `site_id` de l'adresse est enregistré par `setConfig`
+  (le changement de site reconstruit le service, `onConnected` compare `connectionFingerprint`).
+  `state` reste dans l'URL : le front de Gladys refuse une URL d'autorisation sans `state`
+  (`getAuthorizeUrlState`). `onOAuthCallback` est gardé, au cas où SolarEdge changerait.
+- Échecs de `finish_connect` **levés** en objet multilingue (`ActionFailure`) : le SDK envoie
+  `e.message` tel quel, Gladys l'affiche en rouge (contredit la note plus bas sur les erreurs
+  levées en chaîne, écrite avant).
+- Une injection serait possible (`external_id=x&state=…` ressort comme un vrai paramètre `state`),
+  mais elle ne sert pas avec la page de rebond (il faudrait le `state` enveloppé, calculé par le
+  front après coup) et dépend d'un défaut de SolarEdge : écartée.
 
 ## État au 09/10/2026 (1.3.0)
 

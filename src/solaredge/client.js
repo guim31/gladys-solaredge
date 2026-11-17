@@ -71,9 +71,13 @@ export function dailyBudget(monthlyCredits) {
 }
 
 /** The authorization URL the "Connect" button opens. */
-export function buildAuthorizeUrl({ clientId, redirectUri, state }) {
+export function buildAuthorizeUrl({ clientId, redirectUri, state, externalId }) {
   const url = new URL(AUTHORIZE_URL);
   url.searchParams.set('client_id', clientId);
+  if (externalId) {
+    // The only value of ours SolarEdge appends to its redirect.
+    url.searchParams.set('external_id', externalId);
+  }
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('scope', OAUTH_SCOPES);
   url.searchParams.set('state', state);

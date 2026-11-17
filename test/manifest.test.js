@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { ACTIONS, WIDGET_ACTIONS } from '../src/actions.js';
 import { DEFAULT_CONFIG } from '../src/config.js';
-import { OAUTH_FIELD } from '../src/connect.js';
+import { FINISH_CONNECT_ACTION, OAUTH_FIELD } from '../src/connect.js';
 import {
   DEFAULT_INTERVAL,
   ENERGY_FLOW_INTERVALS,
@@ -25,7 +25,8 @@ const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf
 
 test('every manifest action has a registered handler, and vice versa', () => {
   const declared = new Set((manifest.actions ?? []).map((a) => a.key));
-  const handled = new Set(Object.keys(ACTIONS));
+  // "Finish the connection" is wired to the OAuth handlers (src/connect.js).
+  const handled = new Set([...Object.keys(ACTIONS), FINISH_CONNECT_ACTION]);
 
   for (const key of declared) {
     assert.ok(handled.has(key), `manifest action "${key}" has no handler`);
@@ -33,6 +34,16 @@ test('every manifest action has a registered handler, and vice versa', () => {
   for (const key of handled) {
     assert.ok(declared.has(key), `handler "${key}" is not declared in the manifest`);
   }
+});
+
+test('"Finish the connection" is wired in index.js and asks for the address', async () => {
+  const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+  assert.ok(indexSource.includes('onAction(FINISH_CONNECT_ACTION'));
+  const action = manifest.actions.find((a) => a.key === FINISH_CONNECT_ACTION);
+  assert.deepEqual(
+    action.fields.map((f) => [f.key, f.type, f.required]),
+    [['address', 'string', true]],
+  );
 });
 
 test('config_schema defaults stay consistent with DEFAULT_CONFIG', () => {
