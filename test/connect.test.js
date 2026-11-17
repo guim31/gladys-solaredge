@@ -200,3 +200,16 @@ test('only the 20 latest flows are remembered', async () => {
   }
   await assert.rejects(() => handlers.finish(solarEdgeReturn(first)));
 });
+
+test('without the application saved, "Finish" says so and keeps the flow', async () => {
+  const config = { client_id: 'client-1', client_secret: 'secret-1', site_id: '' };
+  const { handlers } = setUp({ config });
+  const address = solarEdgeReturn(await handlers.authorizeUrl(OAUTH_FIELD, REDIRECT));
+  delete config.client_secret;
+  await assert.rejects(
+    () => handlers.finish(address),
+    (err) => err.message.fr.includes('Client Secret'),
+  );
+  config.client_secret = 'secret-1';
+  await handlers.finish(address);
+});

@@ -86,6 +86,12 @@ const FINISH_TEXTS = {
     de: 'Diese Adresse passt zu keiner von diesem Gladys aus gestarteten Verbindung (oder die Integration wurde seitdem neu gestartet): Klicke erneut auf „Verbinden“ und füge die neue Adresse ein.',
     es: 'Esta dirección no corresponde a ninguna conexión iniciada desde este Gladys (o la integración se ha reiniciado desde entonces): pulse de nuevo «Conectar» y pegue la nueva dirección.',
   },
+  noApplication: {
+    en: 'Fill in and save the Client ID and the Client Secret first, then press "Connect".',
+    fr: "Renseignez et enregistrez d'abord le Client ID et le Client Secret, puis appuyez sur « Connecter ».",
+    de: 'Trage zuerst Client ID und Client Secret ein und speichere, dann klicke auf „Verbinden“.',
+    es: 'Introduzca y guarde primero el Client ID y el Client Secret, y pulse «Conectar».',
+  },
   providerError: (error) => ({
     en: `SolarEdge did not grant access (${error}): press "Connect" again and approve.`,
     fr: `SolarEdge n'a pas accordé l'accès (${error}) : appuyez de nouveau sur « Connecter » et autorisez.`,
@@ -99,10 +105,10 @@ const FINISH_TEXTS = {
     es: `SolarEdge rechazó el código de autorización (${reason}). Un código solo sirve una vez y unos minutos: pulse de nuevo «Conectar» y pegue enseguida la nueva dirección.`,
   }),
   connected: (siteId) => ({
-    en: `Connected to SolarEdge${siteId ? ` (site ${siteId})` : ''}. The devices appear in the Discovery tab.`,
-    fr: `Connecté à SolarEdge${siteId ? ` (site ${siteId})` : ''}. Les appareils apparaissent dans l'onglet Découverte.`,
-    de: `Mit SolarEdge verbunden${siteId ? ` (Standort ${siteId})` : ''}. Die Geräte erscheinen im Tab Erkennung.`,
-    es: `Conectado a SolarEdge${siteId ? ` (sitio ${siteId})` : ''}. Los dispositivos aparecen en la pestaña Descubrimiento.`,
+    en: `Connected to SolarEdge${siteId ? ` (site ${siteId})` : ''}. Reload this page before changing the form (the site ID was filled in), then add the devices from the Discovery tab.`,
+    fr: `Connecté à SolarEdge${siteId ? ` (site ${siteId})` : ''}. Rechargez cette page avant de modifier le formulaire (l'identifiant du site a été rempli), puis ajoutez les appareils depuis l'onglet Découverte.`,
+    de: `Mit SolarEdge verbunden${siteId ? ` (Standort ${siteId})` : ''}. Lade diese Seite neu, bevor du das Formular änderst (die Standort-ID wurde eingetragen), und füge dann die Geräte im Tab Erkennung hinzu.`,
+    es: `Conectado a SolarEdge${siteId ? ` (sitio ${siteId})` : ''}. Recargue esta página antes de modificar el formulario (se ha rellenado el ID del sitio) y añada luego los dispositivos desde la pestaña Descubrimiento.`,
   }),
 };
 
@@ -204,13 +210,13 @@ export function createConnectHandlers({
         url.hostname === 'my.gladysassistant.com' ? FINISH_TEXTS.bouncePage : FINISH_TEXTS.noCode,
       );
     }
+    const config = getConfig();
+    if (!config.client_id || !config.client_secret) {
+      throw new ActionFailure(FINISH_TEXTS.noApplication);
+    }
     // The anti-CSRF check of the redirect flow, on the value SolarEdge echoes:
     // a code pasted from a flow this instance never started is refused.
     if (!pendingStates.delete(params.get('external_id'))) {
-      throw new ActionFailure(FINISH_TEXTS.unknownFlow);
-    }
-    const config = getConfig();
-    if (!config.client_id || !config.client_secret) {
       throw new ActionFailure(FINISH_TEXTS.unknownFlow);
     }
     const siteId = /^\d+$/.test(params.get('site_id') ?? '') ? params.get('site_id') : null;

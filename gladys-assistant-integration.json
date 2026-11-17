@@ -120,10 +120,10 @@
         "es": "Acceso a SolarEdge"
       },
       "description": {
-        "en": "Save the fields above first, then connect with your mySolarEdge login (the site owner's), and finish with \"Finish the connection\" below. To be redone only if access expires (14 days without any refresh).",
-        "fr": "Enregistrez d'abord les champs ci-dessus, puis connectez-vous avec vos identifiants mySolarEdge (ceux du propriétaire du site), et terminez avec « Terminer la connexion » plus bas. À refaire seulement si l'accès expire (14 jours sans aucun rafraîchissement).",
-        "de": "Speichere zuerst die Felder oben, verbinde dich dann mit deinen mySolarEdge-Zugangsdaten (denen des Standortbesitzers) und schließe unten mit „Verbindung abschließen“ ab. Nur erneut nötig, wenn der Zugriff abläuft (14 Tage ohne Aktualisierung).",
-        "es": "Guarde primero los campos de arriba, conéctese con sus credenciales de mySolarEdge (las del propietario del sitio) y termine con «Finalizar la conexión», más abajo. Solo hay que repetirlo si el acceso caduca (14 días sin ninguna actualización)."
+        "en": "SolarEdge does not work with the redirect address Gladys shows under this button: declare http://localhost:8080/oauth/callback in your SolarEdge application instead. Save the fields above, connect with your mySolarEdge login (the site owner's), then finish with \"Finish the connection\" below. To be redone only if access expires (14 days without any refresh).",
+        "fr": "SolarEdge ne fonctionne pas avec l'adresse de redirection que Gladys affiche sous ce bouton : déclarez plutôt http://localhost:8080/oauth/callback dans votre application SolarEdge. Enregistrez les champs ci-dessus, connectez-vous avec vos identifiants mySolarEdge (ceux du propriétaire du site), puis terminez avec « Terminer la connexion » plus bas. À refaire seulement si l'accès expire (14 jours sans aucun rafraîchissement).",
+        "de": "SolarEdge funktioniert nicht mit der Weiterleitungsadresse, die Gladys unter dieser Schaltfläche anzeigt: Trage stattdessen http://localhost:8080/oauth/callback in deiner SolarEdge-Anwendung ein. Speichere die Felder oben, verbinde dich mit deinen mySolarEdge-Zugangsdaten (denen des Standortbesitzers) und schließe unten mit „Verbindung abschließen“ ab. Nur erneut nötig, wenn der Zugriff abläuft (14 Tage ohne Aktualisierung).",
+        "es": "SolarEdge no funciona con la dirección de redirección que Gladys muestra bajo este botón: declare en su lugar http://localhost:8080/oauth/callback en su aplicación SolarEdge. Guarde los campos de arriba, conéctese con sus credenciales de mySolarEdge (las del propietario del sitio) y termine con «Finalizar la conexión», más abajo. Solo hay que repetirlo si el acceso caduca (14 días sin ninguna actualización)."
       }
     },
     {
