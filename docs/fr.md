@@ -180,10 +180,10 @@ C'est le chemin prévu par SolarEdge pour un particulier (guide
 2. Cliquez sur **Create Application** : un nom (« Gladys », par exemple),
    le service **Monitoring API**, puis l'accès **Site Access**.
 3. Dans la configuration OAuth de l'application :
-   - **Redirect URI** : l'adresse affichée dans Gladys sous le bouton
-     **Connecter** (onglet **Configuration** de l'intégration), en général
-     `https://my.gladysassistant.com/redirect/oauth` ;
-   - **Origin URL** : `https://my.gladysassistant.com` ;
+   - **Redirect URI** : `http://localhost:8080/oauth/callback` (l'adresse du guide SolarEdge pour les
+     particuliers ; rien n'y répond, c'est voulu, voir l'étape 2) ;
+   - **Origin URL** : laissez vide, ou `http://localhost:8080` si le champ
+     est obligatoire ;
    - portées (_scopes_) : **SITE_DATA** et **DEVICE_DATA** (sans DEVICE_DATA,
      seule la production est disponible).
 4. Copiez le **Client ID** et le **Client Secret**. Le secret n'est affiché
@@ -203,16 +203,29 @@ utilisez le formulaire de transfert de propriété de SolarEdge).
    site**, puis **enregistrez**.
 3. Appuyez sur **Connecter**. La page SolarEdge s'ouvre : connectez-vous avec
    vos identifiants mySolarEdge, choisissez le site si vous en avez plusieurs,
-   puis autorisez. Vous revenez dans Gladys et l'état passe à « connecté ».
-4. Appuyez sur **Tester la connexion** : le message confirme le nom du site et
+   puis autorisez.
+4. Le navigateur s'arrête alors sur une page qui ne s'affiche pas
+   (« connexion refusée » ou équivalent) : c'est normal. Copiez **toute**
+   l'adresse de cette page (elle commence par
+   `http://localhost:8080/oauth/callback?code=`), revenez dans Gladys,
+   collez-la dans l'action **Terminer la connexion** et lancez-la. Faites-le
+   dans les minutes qui suivent : le code ne sert qu'une fois. L'identifiant du
+   site est repris de cette adresse, et l'état passe à « connecté ».
+5. Appuyez sur **Tester la connexion** : le message confirme le nom du site et
    la liste des appareils disponibles.
-5. Les appareils apparaissent dans l'onglet **Découverte**, prêts à être
+6. Les appareils apparaissent dans l'onglet **Découverte**, prêts à être
    ajoutés.
+
+Pourquoi ce copier-coller : SolarEdge ne renvoie pas le paramètre `state` dont
+Gladys a besoin pour revenir seul à votre instance (sa page de connexion ne le
+transmet pas). Le contrôle anti-falsification est fait autrement :
+l'intégration n'accepte que l'adresse d'une connexion lancée depuis votre
+Gladys (valeur `external_id`, que SolarEdge, lui, renvoie).
 
 L'autorisation se renouvelle seule toutes les deux heures. Elle n'expire
 qu'après **14 jours sans aucun rafraîchissement** (Gladys arrêtée deux
 semaines, par exemple) : l'état de la connexion le dit alors, et il suffit
-d'appuyer de nouveau sur **Connecter**.
+d'appuyer de nouveau sur **Connecter**, puis sur **Terminer la connexion**.
 
 **Installateurs** : avec un compte installateur et une application **Fleet
 Access**, collez plutôt la **clé d'API Fleet** dans le champ prévu, sans
@@ -339,9 +352,17 @@ aboutit aussi ici.
 faux, ou l'autorisation a expiré (14 jours sans rafraîchissement) ou a été
 révoquée : vérifiez le secret, enregistrez, puis appuyez sur **Connecter**.
 
-**« Connecter » affiche une erreur de redirection chez SolarEdge** — l'adresse
-de redirection déclarée dans l'application SolarEdge doit être **exactement**
-celle affichée sous le bouton dans Gladys.
+**Après l'autorisation, une page Gladys dit « Impossible de vous rediriger »**
+— l'application SolarEdge a encore l'adresse de redirection
+`https://my.gladysassistant.com/redirect/oauth` (conseillée par la version
+2.0.0) : cette page ne fonctionne pas avec SolarEdge et efface le code.
+Remplacez-la par `http://localhost:8080/oauth/callback` dans la console développeur SolarEdge, puis refaites
+**Connecter** et **Terminer la connexion**.
+
+**« Terminer la connexion » refuse l'adresse** — collez l'adresse complète,
+juste après l'autorisation ; une adresse d'une connexion plus ancienne, ou
+lancée avant un redémarrage de l'intégration, est refusée : appuyez de nouveau
+sur **Connecter**.
 
 **Les appareils Consommation et Réseau n'apparaissent pas** — votre
 installation n'a pas de compteur (option matérielle posée par l'installateur),
@@ -369,7 +390,6 @@ L'intégration ne communique qu'avec `monitoringapi.solaredge.com`, en lecture
 seule. Le Client Secret et la clé Fleet sont stockés par Gladys comme des
 secrets, jamais renvoyés à l'interface ; les jetons d'accès sont gardés par
 l'intégration dans sa configuration, hors du formulaire. Pendant « Connecter »,
-SolarEdge renvoie votre navigateur vers la page de redirection de Gladys
-(`my.gladysassistant.com`), qui le renvoie aussitôt vers votre instance : elle
-voit passer le code d'autorisation, inutilisable sans le Client Secret. Aucune
-donnée n'est envoyée ailleurs.
+SolarEdge renvoie votre navigateur vers `localhost`, c'est-à-dire votre propre
+ordinateur : le code d'autorisation ne passe par aucun autre serveur, et il est
+inutilisable sans le Client Secret. Aucune donnée n'est envoyée ailleurs.

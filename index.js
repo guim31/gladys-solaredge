@@ -27,7 +27,7 @@ import {
 } from './src/config.js';
 import { SolarEdgeService } from './src/solaredge/service.js';
 import { ERROR_CODES, SolarEdgeError } from './src/solaredge/client.js';
-import { createConnectHandlers } from './src/connect.js';
+import { FINISH_CONNECT_ACTION, createConnectHandlers } from './src/connect.js';
 import { FEATURE as GRID_FEATURE } from './src/devices/grid.js';
 import {
   ACTIONS,
@@ -268,10 +268,17 @@ const connect = createConnectHandlers({
   gladys,
   getConfig: () => config,
   onConnected: async () => {
+    const previousFingerprint = connectionFingerprint(config);
     // The core does not echo our own setConfig: read the stored config back.
     config = normalizeConfig(await gladys.getConfig());
     lastBootstrapFailure = null;
-    if (service && service.client.mode === 'oauth') {
+    // Same application and site: hand the new tokens to the running client.
+    // "Finish the connection" may also have saved another site id.
+    if (
+      service &&
+      service.client.mode === 'oauth' &&
+      connectionFingerprint(config) === previousFingerprint
+    ) {
       service.updateConfig(config);
     } else {
       service = null;
@@ -282,6 +289,9 @@ const connect = createConnectHandlers({
 });
 gladys.onOAuthAuthorizeUrl(connect.authorizeUrl);
 gladys.onOAuthCallback(connect.callback);
+// SolarEdge never hands `state` back, so the redirect above cannot complete:
+// the user pastes the address SolarEdge came back to (src/connect.js).
+gladys.onAction(FINISH_CONNECT_ACTION, async (fields) => connect.finish(fields?.address));
 
 /** Save a renewed token pair: the old refresh token no longer works. */
 async function saveTokens(tokens) {

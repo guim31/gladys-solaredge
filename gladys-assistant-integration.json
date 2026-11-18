@@ -25,10 +25,10 @@
         "es": "Primeros pasos"
       },
       "description": {
-        "en": "SolarEdge retired its V1 API (and its API keys) on 3 November 2026. To read your installation: 1. sign in at developer.solaredge.com with your mySolarEdge login and create the free developer account; 2. create an application, service Monitoring API, access \"Site Access\", scopes SITE_DATA and DEVICE_DATA, and declare the redirect URI shown under the \"Connect\" button below; 3. paste its Client ID and Client Secret, and your site ID (mySolarEdge app, site details), then save; 4. press \"Connect\" and approve with your mySolarEdge login. The Free plan gives 2,000 requests a month: the refresh interval adapts to it.",
-        "fr": "SolarEdge a arrêté son API V1 (et ses clés d'API) le 3 novembre 2026. Pour lire votre installation : 1. connectez-vous sur developer.solaredge.com avec vos identifiants mySolarEdge et créez le compte développeur gratuit ; 2. créez une application, service Monitoring API, accès « Site Access », portées SITE_DATA et DEVICE_DATA, et déclarez l'adresse de redirection affichée sous le bouton « Connecter » ci-dessous ; 3. collez son Client ID et son Client Secret, ainsi que l'identifiant de votre site (application mySolarEdge, détails du site), puis enregistrez ; 4. appuyez sur « Connecter » et autorisez avec vos identifiants mySolarEdge. L'offre gratuite donne 2 000 requêtes par mois : l'intervalle de rafraîchissement s'y adapte.",
-        "de": "SolarEdge hat seine V1-API (und deren API-Schlüssel) am 3. November 2026 abgeschaltet. So liest du deine Anlage aus: 1. Melde dich auf developer.solaredge.com mit deinen mySolarEdge-Zugangsdaten an und lege das kostenlose Entwicklerkonto an; 2. erstelle eine Anwendung, Dienst Monitoring API, Zugriff „Site Access“, Bereiche SITE_DATA und DEVICE_DATA, und trage die unter der Schaltfläche „Verbinden“ angezeigte Weiterleitungsadresse ein; 3. füge Client ID und Client Secret sowie deine Standort-ID (mySolarEdge-App, Standortdetails) ein und speichere; 4. klicke auf „Verbinden“ und bestätige mit deinen mySolarEdge-Zugangsdaten. Der kostenlose Tarif bietet 2.000 Anfragen pro Monat: Das Aktualisierungsintervall passt sich daran an.",
-        "es": "SolarEdge retiró su API V1 (y sus claves de API) el 3 de noviembre de 2026. Para leer su instalación: 1. inicie sesión en developer.solaredge.com con sus credenciales de mySolarEdge y cree la cuenta de desarrollador gratuita; 2. cree una aplicación, servicio Monitoring API, acceso «Site Access», ámbitos SITE_DATA y DEVICE_DATA, y declare la dirección de redirección que aparece bajo el botón «Conectar»; 3. pegue su Client ID y su Client Secret, y el ID de su sitio (aplicación mySolarEdge, detalles del sitio), y guarde; 4. pulse «Conectar» y autorice con sus credenciales de mySolarEdge. El plan gratuito ofrece 2000 solicitudes al mes: el intervalo de actualización se adapta a ello."
+        "en": "SolarEdge retired its V1 API (and its API keys) on 3 November 2026. To read your installation: 1. sign in at developer.solaredge.com with your mySolarEdge login and create the free developer account; 2. create an application, service Monitoring API, access \"Site Access\", scopes SITE_DATA and DEVICE_DATA, Redirect URI http://localhost:8080/oauth/callback; 3. paste its Client ID and Client Secret, and your site ID, then save; 4. press \"Connect\" and approve with your mySolarEdge login; the browser then stops on a page that does not load: copy its whole address and paste it into \"Finish the connection\" below. The Free plan gives 2,000 requests a month: the refresh interval adapts to it.",
+        "fr": "SolarEdge a arrêté son API V1 (et ses clés d'API) le 3 novembre 2026. Pour lire votre installation : 1. connectez-vous sur developer.solaredge.com avec vos identifiants mySolarEdge et créez le compte développeur gratuit ; 2. créez une application, service Monitoring API, accès « Site Access », portées SITE_DATA et DEVICE_DATA, adresse de redirection (Redirect URI) http://localhost:8080/oauth/callback ; 3. collez son Client ID et son Client Secret, ainsi que l'identifiant de votre site, puis enregistrez ; 4. appuyez sur « Connecter » et autorisez avec vos identifiants mySolarEdge ; le navigateur s'arrête ensuite sur une page qui ne s'affiche pas : copiez toute son adresse et collez-la dans « Terminer la connexion » plus bas. L'offre gratuite donne 2 000 requêtes par mois : l'intervalle de rafraîchissement s'y adapte.",
+        "de": "SolarEdge hat seine V1-API (und deren API-Schlüssel) am 3. November 2026 abgeschaltet. So liest du deine Anlage aus: 1. Melde dich auf developer.solaredge.com mit deinen mySolarEdge-Zugangsdaten an und lege das kostenlose Entwicklerkonto an; 2. erstelle eine Anwendung, Dienst Monitoring API, Zugriff „Site Access“, Bereiche SITE_DATA und DEVICE_DATA, Weiterleitungsadresse (Redirect URI) http://localhost:8080/oauth/callback; 3. füge Client ID und Client Secret sowie deine Standort-ID ein und speichere; 4. klicke auf „Verbinden“ und bestätige mit deinen mySolarEdge-Zugangsdaten; der Browser bleibt dann auf einer Seite stehen, die nicht lädt: Kopiere ihre vollständige Adresse und füge sie unten in „Verbindung abschließen“ ein. Der kostenlose Tarif bietet 2.000 Anfragen pro Monat: Das Aktualisierungsintervall passt sich daran an.",
+        "es": "SolarEdge retiró su API V1 (y sus claves de API) el 3 de noviembre de 2026. Para leer su instalación: 1. inicie sesión en developer.solaredge.com con sus credenciales de mySolarEdge y cree la cuenta de desarrollador gratuita; 2. cree una aplicación, servicio Monitoring API, acceso «Site Access», ámbitos SITE_DATA y DEVICE_DATA, dirección de redirección (Redirect URI) http://localhost:8080/oauth/callback; 3. pegue su Client ID y su Client Secret, y el ID de su sitio, y guarde; 4. pulse «Conectar» y autorice con sus credenciales de mySolarEdge; el navegador se detiene entonces en una página que no carga: copie su dirección completa y péguela en «Finalizar la conexión», más abajo. El plan gratuito ofrece 2000 solicitudes al mes: el intervalo de actualización se adapta a ello."
       },
       "links": [
         {
@@ -120,10 +120,10 @@
         "es": "Acceso a SolarEdge"
       },
       "description": {
-        "en": "Save the fields above first, then connect with your mySolarEdge login (the site owner's). To be redone only if access expires (14 days without any refresh).",
-        "fr": "Enregistrez d'abord les champs ci-dessus, puis connectez-vous avec vos identifiants mySolarEdge (ceux du propriétaire du site). À refaire seulement si l'accès expire (14 jours sans aucun rafraîchissement).",
-        "de": "Speichere zuerst die Felder oben und verbinde dich dann mit deinen mySolarEdge-Zugangsdaten (denen des Standortbesitzers). Nur erneut nötig, wenn der Zugriff abläuft (14 Tage ohne Aktualisierung).",
-        "es": "Guarde primero los campos de arriba y conéctese con sus credenciales de mySolarEdge (las del propietario del sitio). Solo hay que repetirlo si el acceso caduca (14 días sin ninguna actualización)."
+        "en": "SolarEdge does not work with the redirect address Gladys shows under this button: declare http://localhost:8080/oauth/callback in your SolarEdge application instead. Save the fields above, connect with your mySolarEdge login (the site owner's), then finish with \"Finish the connection\" below. To be redone only if access expires (14 days without any refresh).",
+        "fr": "SolarEdge ne fonctionne pas avec l'adresse de redirection que Gladys affiche sous ce bouton : déclarez plutôt http://localhost:8080/oauth/callback dans votre application SolarEdge. Enregistrez les champs ci-dessus, connectez-vous avec vos identifiants mySolarEdge (ceux du propriétaire du site), puis terminez avec « Terminer la connexion » plus bas. À refaire seulement si l'accès expire (14 jours sans aucun rafraîchissement).",
+        "de": "SolarEdge funktioniert nicht mit der Weiterleitungsadresse, die Gladys unter dieser Schaltfläche anzeigt: Trage stattdessen http://localhost:8080/oauth/callback in deiner SolarEdge-Anwendung ein. Speichere die Felder oben, verbinde dich mit deinen mySolarEdge-Zugangsdaten (denen des Standortbesitzers) und schließe unten mit „Verbindung abschließen“ ab. Nur erneut nötig, wenn der Zugriff abläuft (14 Tage ohne Aktualisierung).",
+        "es": "SolarEdge no funciona con la dirección de redirección que Gladys muestra bajo este botón: declare en su lugar http://localhost:8080/oauth/callback en su aplicación SolarEdge. Guarde los campos de arriba, conéctese con sus credenciales de mySolarEdge (las del propietario del sitio) y termine con «Finalizar la conexión», más abajo. Solo hay que repetirlo si el acceso caduca (14 días sin ninguna actualización)."
       }
     },
     {
@@ -203,6 +203,41 @@
     }
   ],
   "actions": [
+    {
+      "key": "finish_connect",
+      "label": {
+        "en": "Finish the connection",
+        "fr": "Terminer la connexion",
+        "de": "Verbindung abschließen",
+        "es": "Finalizar la conexión"
+      },
+      "description": {
+        "en": "After \"Connect\": paste the address of the page SolarEdge sent you back to (it contains code= and site_id=).",
+        "fr": "Après « Connecter » : collez l'adresse de la page où SolarEdge vous a renvoyé (elle contient code= et site_id=).",
+        "de": "Nach „Verbinden“: Füge die Adresse der Seite ein, auf die SolarEdge dich zurückgeschickt hat (sie enthält code= und site_id=).",
+        "es": "Después de «Conectar»: pegue la dirección de la página a la que SolarEdge le devolvió (contiene code= y site_id=)."
+      },
+      "timeout_seconds": 60,
+      "fields": [
+        {
+          "key": "address",
+          "type": "string",
+          "required": true,
+          "label": {
+            "en": "Address after approval",
+            "fr": "Adresse après l'autorisation",
+            "de": "Adresse nach der Freigabe",
+            "es": "Dirección tras la autorización"
+          },
+          "placeholder": {
+            "en": "http://localhost:8080/oauth/callback?code=…&site_id=…&external_id=…",
+            "fr": "http://localhost:8080/oauth/callback?code=…&site_id=…&external_id=…",
+            "de": "http://localhost:8080/oauth/callback?code=…&site_id=…&external_id=…",
+            "es": "http://localhost:8080/oauth/callback?code=…&site_id=…&external_id=…"
+          }
+        }
+      ]
+    },
     {
       "key": "test_connection",
       "label": {
