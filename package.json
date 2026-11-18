@@ -1,6 +1,6 @@
 {
   "name": "gladys-solaredge",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "SolarEdge external integration for Gladys Assistant: solar production, home consumption, grid exchanges and battery storage.",
   "type": "module",
